@@ -85,7 +85,7 @@ FROM
  SELECT 5 * 3;
 ```
 
-### PostgreSQL Column Alias
+Column Alias
 
 ```sql
 -- Alias
@@ -97,7 +97,7 @@ FROM
 SELECT 5 * 3 AS "5 * 3";
 ```
 
-### PostgreSQL ORDER BY
+### ORDER BY
 
 ```sql
 -- ORDER BY sort_expresssion [ASC | DESC] [NULLS FIRST | NULLS LAST]
@@ -142,7 +142,7 @@ ORDER BY
 SELECT 1,2,3, NUll;
 ```
 
-### PostgreSQL SELECT DISTINCT
+### SELECT DISTINCT
 
 搜尋時移除重複的 rows
 
@@ -533,5 +533,368 @@ WHERE
     phone IS NOT NULL;
 ```
 
+##  Section 3. Joining Multiple Tables
 
+PostgreSQL join 用於根據相關表之間的共用的 coloumn 的值來組合一個或多個表的 coloumn。共用的 coloumn 通常是第一個表的  primary key 和第二個表的 foreign key。
+
+### Joins
+
+PostgreSQL supports 
+
+-   inner join
+-   left join
+-   right join
+-   full outer join
+-   cross join
+-   natural join
+-   self-join
+
+![img](https://sp.postgresqltutorial.com/wp-content/uploads/2018/12/PostgreSQL-Joins.png)
+
+
+
+### Table Aliases
+
+當兩個table有同個coloumn要用別名`**table_name**.column_name`分辨他們
+
+```sql
+-- inner join with table alias
+SELECT
+	c.customer_id,
+	first_name,
+	amount,
+	payment_date
+FROM
+	customer c
+INNER JOIN payment p 
+    ON p.customer_id = c.customer_id
+ORDER BY 
+   payment_date DESC;
+   
+-- self join with table alias
+SELECT
+    e.first_name employee,
+    m .first_name manager
+FROM
+    employee e
+INNER JOIN employee m 
+    ON m.employee_id = e.manager_id
+ORDER BY manager;
+```
+
+### INNER JOIN
+
+左右表都有才會列出來。
+
+```sql
+-- ON pka = fka
+SELECT
+	c.customer_id,
+	first_name,
+	last_name,
+	email,
+	amount,
+	payment_date
+FROM
+	customer c
+INNER JOIN payment p 
+    ON p.customer_id = c.customer_id
+WHERE
+    c.customer_id = 2;
+    
+-- USING same coloumn
+SELECT
+	customer_id,
+	first_name,
+	last_name,
+	amount,
+	payment_date
+FROM
+	customer
+INNER JOIN payment USING(customer_id)
+ORDER BY payment_date;
+
+-- inner joint 3 tables
+SELECT
+	c.customer_id,
+	c.first_name customer_first_name,
+	c.last_name customer_last_name,
+	s.first_name staff_first_name,
+	s.last_name staff_last_name,
+	amount,
+	payment_date
+FROM
+	customer c
+INNER JOIN payment p 
+    ON p.customer_id = c.customer_id
+INNER JOIN staff s 
+    ON p.staff_id = s.staff_id
+ORDER BY payment_date;
+```
+
+### LEFT JOIN
+
+先依左表資料為主，右表欄位沒有對到的話填NULL
+
+```sql
+-- 用 flim table LEFT JOIN inventory table
+SELECT
+	f.film_id,
+	title,
+	inventory_id
+FROM
+	film f
+LEFT JOIN inventory i
+   ON i.film_id = f.film_id
+WHERE i.film_id IS NULL
+ORDER BY title;
+
+-- USING same coloumn
+SELECT
+	f.film_id,
+	title,
+	inventory_id
+FROM
+	film f
+LEFT JOIN inventory i USING (film_id)
+WHERE i.film_id IS NULL
+ORDER BY title;
+```
+
+### RIGHT JOIN
+
+先依右表資料為主，左表欄位沒有對到的話填NULL
+
+```sql
+-- data
+DROP TABLE IF EXISTS films;
+DROP TABLE IF EXISTS film_reviews;
+
+CREATE TABLE films(
+   film_id SERIAL PRIMARY KEY,
+   title varchar(255) NOT NULL
+);
+
+INSERT INTO films(title)
+VALUES('Joker'),
+      ('Avengers: Endgame'),
+      ('Parasite');
+
+CREATE TABLE film_reviews(
+   review_id SERIAL PRIMARY KEY,
+   film_id INT,
+   review VARCHAR(255) NOT NULL	
+);
+
+INSERT INTO film_reviews(film_id, review)
+VALUES(1, 'Excellent'),
+      (1, 'Awesome'),
+      (2, 'Cool'),
+      (NULL, 'Beautiful');
+```
+
+```sql
+SELECT review, title
+FROM films
+RIGHT JOIN film_reviews USING (film_id)
+WHERE title IS NULL;
+```
+
+### Self-Join
+
+使用同一個表但不同別名兩次來查詢
+
+```sql
+CREATE TABLE employee (
+	employee_id INT PRIMARY KEY,
+	first_name VARCHAR (255) NOT NULL,
+	last_name VARCHAR (255) NOT NULL,
+	manager_id INT,
+	FOREIGN KEY (manager_id) 
+	REFERENCES employee (employee_id) 
+	ON DELETE CASCADE
+);
+INSERT INTO employee (
+	employee_id,
+	first_name,
+	last_name,
+	manager_id
+)
+VALUES
+	(1, 'Windy', 'Hays', NULL),
+	(2, 'Ava', 'Christensen', 1),
+	(3, 'Hassan', 'Conner', 1),
+	(4, 'Anna', 'Reeves', 2),
+	(5, 'Sau', 'Norman', 2),
+	(6, 'Kelsie', 'Hays', 3),
+	(7, 'Tory', 'Goff', 3),
+	(8, 'Salley', 'Lester', 3);
+```
+
+```sql
+-- 找主管
+SELECT
+    e.first_name || ' ' || e.last_name employee,
+    m .first_name || ' ' || m .last_name manager
+FROM
+    employee e
+INNER JOIN employee m ON m.employee_id = e.manager_id
+ORDER BY manager;
+
+-- 找同樣長度的電影pair
+SELECT
+    f1.title,
+    f2.title,
+    f1.length
+FROM
+    film f1
+INNER JOIN film f2 
+    ON f1.film_id <> f2.film_id AND 
+       f1.length = f2.length
+```
+
+### FULL OUTER JOIN
+
+= left join + right join，對不到就填NULL
+
+```sql
+DROP TABLE IF EXISTS departments;
+DROP TABLE IF EXISTS employees;
+
+CREATE TABLE departments (
+	department_id serial PRIMARY KEY,
+	department_name VARCHAR (255) NOT NULL
+);
+
+CREATE TABLE employees (
+	employee_id serial PRIMARY KEY,
+	employee_name VARCHAR (255),
+	department_id INTEGER
+);
+
+INSERT INTO departments (department_name)
+VALUES
+	('Sales'),
+	('Marketing'),
+	('HR'),
+	('IT'),
+	('Production');
+
+INSERT INTO employees (
+	employee_name,
+	department_id
+)
+VALUES
+	('Bette Nicholson', 1),
+	('Christian Gable', 1),
+	('Joe Swank', 2),
+	('Fred Costner', 3),
+	('Sandra Kilmer', 4),
+	('Julia Mcqueen', NULL);
+```
+
+```sql
+SELECT
+	employee_name,
+	department_name
+FROM
+	employees e
+FULL OUTER JOIN departments d 
+        ON d.department_id = e.department_id;
+```
+
+### Cross Join
+
+Cartesian Produc(笛卡爾積): 所有可能的有序對之集合 N croos join M = N*M rows。
+
+```sql
+-- data
+DROP TABLE IF EXISTS T1;
+CREATE TABLE T1 (label CHAR(1) PRIMARY KEY);
+
+DROP TABLE IF EXISTS T2;
+CREATE TABLE T2 (score INT PRIMARY KEY);
+
+INSERT INTO T1 (label)
+VALUES
+	('A'),
+	('B');
+
+INSERT INTO T2 (score)
+VALUES
+	(1),
+	(2),
+	(3);
+```
+
+```sql
+-- CROSS JOIN
+SELECT *
+FROM T1
+CROSS JOIN T2;
+
+-- equal to
+SELECT *
+FROM T1, T2;
+
+-- equal to
+SELECT *
+FROM T1
+INNER JOIN T2 ON true;
+```
+
+### Natural Join
+
+依相同的coloumn自動建立隱式連接。
+
+```sql
+SELECT select_list
+FROM T1
+NATURAL [INNER, LEFT, RIGHT] JOIN T2;
+
+-- default: INNER
+```
+
+```sql
+-- data
+DROP TABLE IF EXISTS categories;
+CREATE TABLE categories (
+	category_id serial PRIMARY KEY,
+	category_name VARCHAR (255) NOT NULL
+);
+
+DROP TABLE IF EXISTS products;
+CREATE TABLE products (
+	product_id serial PRIMARY KEY,
+	product_name VARCHAR (255) NOT NULL,
+	category_id INT NOT NULL,
+	FOREIGN KEY (category_id) REFERENCES categories (category_id)
+);
+
+INSERT INTO categories (category_name)
+VALUES
+	('Smart Phone'),
+	('Laptop'),
+	('Tablet');
+
+INSERT INTO products (product_name, category_id)
+VALUES
+	('iPhone', 1),
+	('Samsung Galaxy', 1),
+	('HP Elite', 2),
+	('Lenovo Thinkpad', 2),
+	('iPad', 3),
+	('Kindle Fire', 3);
+```
+
+```sql
+-- Natural Join
+
+SELECT * FROM products
+NATURAL JOIN categories;
+
+-- equal
+SELECT	* FROM products
+INNER JOIN categories USING (category_id);
+```
 
