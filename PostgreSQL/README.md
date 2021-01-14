@@ -85,7 +85,7 @@ FROM
  SELECT 5 * 3;
 ```
 
-Column Alias
+### Column Alias
 
 ```sql
 -- Alias
@@ -897,4 +897,100 @@ NATURAL JOIN categories;
 SELECT	* FROM products
 INNER JOIN categories USING (category_id);
 ```
+
+## Section 4. Grouping Data
+
+### GROUP BY
+
+GROUP BY 將 SELECT 得到的結果分成各組。對於每個組，可以應用一個集合函數，例如SUM()來計算總和，或者COUNT()來計算個數。(沒用集合函數的話結果會跟distinctㄧ樣)
+
+```sql
+-- Group by id + sum
+SELECT
+	customer_id,
+	SUM (amount)
+FROM
+	payment
+GROUP BY
+	customer_id
+ORDER BY
+	SUM (amount) DESC;
+
+-- group by id + count
+SELECT
+	staff_id,
+	COUNT (payment_id)
+FROM
+	payment
+GROUP BY
+	staff_id;
+
+-- group by date
+SELECT 
+	DATE(payment_date) paid_date, 
+	SUM(amount) sum
+FROM 
+	payment
+GROUP BY
+	DATE(payment_date);
+
+-- group by with join table
+SELECT
+	first_name || ' ' || last_name full_name,
+	SUM (amount) amount
+FROM
+	payment
+INNER JOIN customer USING (customer_id)
+GROUP BY
+	full_name
+ORDER BY
+	amount;
+	
+-- group by mulitple coloumns
+SELECT 
+	customer_id, 
+	staff_id, 
+	SUM(amount) 
+FROM 
+	payment
+GROUP BY 
+	staff_id, 
+	customer_id
+ORDER BY 
+    customer_id;
+```
+
+### HAVING
+
+HAVING通常與GROUP BY一起使用，根據指定的條件過濾組或集合。
+
+WHERE 是過濾 rows，而HAVING是過濾 groups。
+
+!! Postgres不能在 HAVING、WHERE 裡使用 coloum alias。
+
+```sql
+-- having + sum
+SELECT
+	customer_id,
+	SUM (amount)
+FROM
+	payment
+GROUP BY
+	customer_id
+HAVING
+	SUM (amount) > 200;
+
+-- having + count
+SELECT
+	store_id,
+	COUNT (customer_id)
+FROM
+	customer
+GROUP BY
+	store_id
+HAVING
+	COUNT (customer_id) > 300;
+```
+
+
 
