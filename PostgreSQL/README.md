@@ -303,7 +303,7 @@ LIMIT 4 OFFSET 3;
 
 ### FETCH
 
-因為 LIMIT 不是 SQL standard，所以 postgreSQL 還提供功能一樣的 FETCH 
+因為 LIMIT 不是 SQL standard，所以 postgreSQL 還提供功能一樣的 FETCH
 
 ```sql
 OFFSET start { ROW | ROWS }
@@ -533,13 +533,13 @@ WHERE
     phone IS NOT NULL;
 ```
 
-##  Section 3. Joining Multiple Tables
+## Section 3. Joining Multiple Tables
 
 PostgreSQL join 用於根據相關表之間的共用的 coloumn 的值來組合一個或多個表的 coloumn。共用的 coloumn 通常是第一個表的  primary key 和第二個表的 foreign key。
 
 ### Joins
 
-PostgreSQL supports 
+PostgreSQL supports
 
 -   inner join
 -   left join
@@ -805,7 +805,7 @@ FULL OUTER JOIN departments d
 
 ### Cross Join
 
-Cartesian Produc(笛卡爾積): 所有可能的有序對之集合 N croos join M = N*M rows。
+Cartesian Produc(笛卡爾積): 所有可能的有序對之集合 N croos join M = N * M rows
 
 ```sql
 -- data
@@ -992,5 +992,91 @@ HAVING
 	COUNT (customer_id) > 300;
 ```
 
+## Section 5. Set Operations
 
+### UNION
 
+結合多個表的結果：聯集
+
+-   需要選取相同順序、數量的 coloumns
+-   資料類型必須相容
+
+-   union 會移除重複的 rows；union all 會保留
+
+```sql
+-- data
+DROP TABLE IF EXISTS top_rated_films;
+CREATE TABLE top_rated_films(
+	title VARCHAR NOT NULL,
+	release_year SMALLINT
+);
+
+DROP TABLE IF EXISTS most_popular_films;
+CREATE TABLE most_popular_films(
+	title VARCHAR NOT NULL,
+	release_year SMALLINT
+);
+
+INSERT INTO 
+   top_rated_films(title,release_year)
+VALUES
+   ('The Shawshank Redemption',1994),
+   ('The Godfather',1972),
+   ('12 Angry Men',1957);
+
+INSERT INTO 
+   most_popular_films(title,release_year)
+VALUES
+   ('An American Pickle',2020),
+   ('The Godfather',1972),
+   ('Greyhound',2020);
+```
+
+```sql
+-- union(5 rows)
+SELECT * FROM top_rated_films
+UNION
+SELECT * FROM most_popular_films;
+-- union all(6 rows)
+SELECT * FROM top_rated_films
+UNION ALL
+SELECT * FROM most_popular_films;
+
+-- union all order by
+SELECT * FROM top_rated_films
+UNION ALL
+SELECT * FROM most_popular_films
+ORDER BY release_year;
+```
+
+### INTERSECT
+
+結合多個表的結果：交集
+
+-   需要選取相同順序、數量的 coloumns
+-   資料類型必須相容
+
+```sql
+-- INTERSECT
+SELECT *
+FROM most_popular_films 
+INTERSECT
+SELECT *
+FROM top_rated_films;
+```
+
+### Except
+
+結合多個表的結果：差集
+
+-   需要選取相同順序、數量的 coloumns
+-   資料類型必須相容
+
+```sql
+-- EXCEPT
+SELECT *
+FROM top_rated_films
+EXCEPT 
+SELECT *
+FROM most_popular_films;
+```
