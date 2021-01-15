@@ -1080,3 +1080,212 @@ EXCEPT
 SELECT *
 FROM most_popular_films;
 ```
+
+## Section 6. Grouping sets, Cube, and Rollup
+
+### GROUPING SETS
+
+- Grouping sets 可以讓你在同一個查詢中定義多個 group 結果，不然就要查詢很多次必用 union all 連結在一起
+- GROUPING() 回傳0/1，可以知道參數是否為當前 grouping sets 的成員
+
+```sql
+-- data
+DROP TABLE IF EXISTS sales;
+CREATE TABLE sales (
+    brand VARCHAR NOT NULL,
+    segment VARCHAR NOT NULL,
+    quantity INT NOT NULL,
+    PRIMARY KEY (brand, segment)
+);
+
+INSERT INTO sales (brand, segment, quantity)
+VALUES
+    ('ABC', 'Premium', 100),
+    ('ABC', 'Basic', 200),
+    ('XYZ', 'Premium', 100),
+    ('XYZ', 'Basic', 300);
+```
+
+```sql
+-- grouping set
+SELECT
+    brand,
+    segment,
+    SUM (quantity)
+FROM
+    sales
+GROUP BY
+    GROUPING SETS (
+        (brand, segment),
+        (brand),
+        (segment),
+        ()
+    );
+    
+-- grouping set + grouping
+SELECT
+	GROUPING(brand) grouping_brand,
+	GROUPING(segment) grouping_segment,
+	brand,
+	segment,
+	SUM (quantity)
+FROM
+	sales
+GROUP BY
+	GROUPING SETS (
+		(brand),
+		(segment),
+		()
+	)
+ORDER BY
+	brand,
+	segment;
+	
+-- grouping set + grouping + having
+Select
+	GROUPING(brand) grouping_brand,
+	GROUPING(segment) grouping_segment,
+	brand,
+	segment,
+	SUM (quantity)
+FROM
+	sales
+GROUP BY
+	GROUPING SETS (
+		(brand),
+		(segment),
+		()
+	)
+HAVING GROUPING(brand) = 0	
+ORDER BY
+	brand,
+	segment;
+```
+
+### CUBE
+
+CUBE 為 GROUP BY 的子句，用來產生所有 Grouping sets 的組合結果，CUBE(n個數) = 2^n Grouping sets。
+
+```sql
+-- 兩個結果為相同
+CUBE(c1,c2,c3) 
+
+GROUPING SETS (
+    (c1,c2,c3), 
+    (c1,c2),
+    (c1,c3),
+    (c2,c3),
+    (c1),
+    (c2),
+    (c3), 
+    ()
+ )
+```
+
+```sql
+-- CUBE ＝ (brnad,segment), (brand), (segment), ()
+SELECT
+	GROUPING(brand) grouping_brand,
+	GROUPING(segment) grouping_segment,
+    brand,
+    segment,
+    SUM (quantity)
+FROM
+    sales
+GROUP BY
+    CUBE (brand, segment)
+ORDER BY
+    brand,
+    segment;
+
+-- partial cube = (brand, segment), (brand)
+SELECT
+    brand,
+    segment,
+    SUM (quantity)
+FROM
+    sales
+GROUP BY
+    brand,
+    CUBE (segment)
+ORDER BY
+    brand,
+    segment;
+```
+
+### ROLLUP
+
+ROLLUP 為 GROUP BY 的子句，用來產生部分、有層次(例如年->月->日) Grouping sets 的組合結果，ROLLUP(n個數) = n+1 Grouping sets。
+
+```sql
+-- 兩個結果為相同
+ROLLUP(c1,c2,c3) 
+
+GROUPING SETS (
+    (c1,c2,c3), 
+    (c1,c2),
+    (c1),
+    ()
+ )
+```
+
+```sql
+-- ROLLUP(年、月、日)
+SELECT
+    EXTRACT (YEAR FROM rental_date) y,
+    EXTRACT (MONTH FROM rental_date) M,
+    EXTRACT (DAY FROM rental_date) d,
+    COUNT (rental_id)
+FROM
+    rental
+GROUP BY
+    ROLLUP (
+        EXTRACT (YEAR FROM rental_date),
+        EXTRACT (MONTH FROM rental_date),
+        EXTRACT (DAY FROM rental_date)
+    );
+```
+
+```sql
+-- select 順序很重要
+---- (brand,segement), (brand), ()
+SELECT
+    brand,
+    segment,
+    SUM (quantity)
+FROM
+    sales
+GROUP BY
+    ROLLUP (brand, segment)
+ORDER BY
+    brand,
+    segment;
+    
+---- (segment,brand), (segment), ()
+SELECT
+    segment,
+    brand,
+    SUM (quantity)
+FROM
+    sales
+GROUP BY
+    ROLLUP (brand, segment)
+ORDER BY
+    brand,
+    segment;
+    
+-- partial rollup = (segment,brand), (segment)
+SELECT
+    segment,
+    brand,
+    SUM (quantity)
+FROM
+    sales
+GROUP BY
+    segment,
+    ROLLUP (brand)
+ORDER BY
+    segment,
+    brand;
+```
+
