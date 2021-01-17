@@ -1462,3 +1462,162 @@ ORDER BY
 	last_name;
 ```
 
+## Section 8. Common Table Expressions
+
+### CTE
+
+CTE 是一個臨時的結果集，你可以在另一個SQL句中引用，包括SELECT、INSERT、UPDATE以及DELETE。
+
+```sql
+WITH cte_name (column_list) AS (
+    CTE_query_definition 
+)
+statement;
+```
+
+- 建立 cte_name 臨時表然後用在 statement 中
+- 不指定 column_list 的話 CTE_query_definition 裡查的 column 就會變 CTE 的 column
+
+```sql
+-- create cte -> use cte
+WITH cte_film AS (
+    SELECT 
+        film_id, 
+        title,
+        (CASE 
+            WHEN length < 30 THEN 'Short'
+            WHEN length < 90 THEN 'Medium'
+            ELSE 'Long'
+        END) length    
+    FROM
+        film
+) SELECT 
+    film_id,
+    title,
+    length
+FROM 
+    cte_film
+WHERE
+    length = 'Long'
+ORDER BY 
+    title;
+```
+
+```sql
+-- cte + join
+WITH cte_rental AS (
+    SELECT staff_id,
+        COUNT(rental_id) rental_count
+    FROM   rental
+    GROUP  BY staff_id
+) SELECT s.staff_id,
+    first_name,
+    last_name,
+    rental_count
+FROM staff s
+    INNER JOIN cte_rental USING (staff_id);
+```
+
+```Sql
+-- cte + window function
+WITH cte_film AS  (
+    SELECT film_id,
+        title,
+        rating,
+        length,
+        RANK() OVER (
+            PARTITION BY rating
+            ORDER BY length DESC) 
+        length_rank
+    FROM 
+        film
+) SELECT *
+FROM cte_film
+WHERE length_rank = 1;
+```
+
+CTE 優點
+
+- 複雜查詢的可讀性
+- 可以做遞迴查詢
+- 可以搭配 [window function](https://www.postgresqltutorial.com/postgresql-window-function/)
+
+### Recursive Query
+
+```sql
+-- 語法
+WITH RECURSIVE cte_name AS(
+    CTE_query_definition -- non-recursive term
+    UNION [ALL]
+    CTE_query definion  -- recursive term
+) SELECT * FROM cte_name;
+```
+
+Recursive CTE 運作流程
+
+1. 執行 non-recursive term 建立基本結果集(R0)
+2. 執行 recursive term 建立遞迴結果集(Ri)直到回傳空結果集，Ri 當 input；Ri+1當 output；i=0..n
+3. 回傳 UNION [ALL] 的結果 R0,R1...RN
+
+```sql
+-- data
+DROP TABLE IF EXISTS employees;
+CREATE TABLE employees (
+	employee_id serial PRIMARY KEY,
+	full_name VARCHAR NOT NULL,
+	manager_id INT
+);
+
+INSERT INTO employees (
+	employee_id,
+	full_name,
+	manager_id
+)
+VALUES
+	(1, 'Michael North', NULL),
+	(2, 'Megan Berry', 1),
+	(3, 'Sarah Berry', 1),
+	(4, 'Zoe Black', 1),
+	(5, 'Tim James', 1),
+	(6, 'Bella Tucker', 2),
+	(7, 'Ryan Metcalfe', 2),
+	(8, 'Max Mills', 2),
+	(9, 'Benjamin Glover', 2),
+	(10, 'Carolyn Henderson', 3),
+	(11, 'Nicola Kelly', 3),
+	(12, 'Alexandra Climo', 3),
+	(13, 'Dominic King', 3),
+	(14, 'Leonard Gray', 4),
+	(15, 'Eric Rampling', 4),
+	(16, 'Piers Paige', 7),
+	(17, 'Ryan Henderson', 7),
+	(18, 'Frank Tucker', 8),
+	(19, 'Nathan Ferguson', 8),
+	(20, 'Kevin Rampling', 8);
+```
+
+```sql
+-- 找主管員工關係
+WITH RECURSIVE subordinates AS (
+	SELECT
+		employee_id,
+		manager_id,
+		full_name
+	FROM
+		employees
+	WHERE
+		employee_id = 2
+	UNION
+    SELECT
+	    e.employee_id,
+    	e.manager_id,
+	    e.full_name
+    FROM
+    	employees e
+	    INNER JOIN subordinates s ON s.employee_id = e.manager_id
+) SELECT
+	*
+FROM
+	subordinates;
+```
+
