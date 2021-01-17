@@ -1289,3 +1289,176 @@ ORDER BY
     brand;
 ```
 
+## Section 7. Subquery
+
+### Subquery
+
+子查詢將原本需要兩步驟的查詢結合，另外也可以用在 SELECT, INSERT, DELETE, UPDATE中。
+
+PostgresSQL 執行順序，執行子查詢->拿到結果->塞回主查詢中
+
+```sql
+-- subquery: 找高於平均評分的電影
+SELECT
+	film_id,
+	title,
+	rental_rate
+FROM
+	film
+WHERE
+	rental_rate > (
+		SELECT
+			AVG (rental_rate)
+		FROM
+			film
+	);
+
+-- subquery: 依照dvd還回的時間來找電影
+SELECT
+	film_id,
+	title
+FROM
+	film
+WHERE
+	film_id IN (
+		SELECT
+			inventory.film_id
+		FROM
+			rental
+		INNER JOIN inventory ON inventory.inventory_id = rental.inventory_id
+		WHERE
+			return_date BETWEEN '2005-05-29'
+		AND '2005-05-30'
+	);
+```
+
+EXISTS 只關心是否至少有一筆資料存在並直接返回true(效率較高)，所以通常會這樣寫`EXISTS (SELECT 1 FROM tbl WHERE condition);`
+
+```sql
+-- subquery + exists = 221.92
+SELECT
+	first_name,
+	last_name
+FROM
+	customer
+WHERE
+	EXISTS (
+		SELECT
+			1
+		FROM
+			payment
+		WHERE
+			payment.customer_id = customer.customer_id
+	);
+
+-- distinct + innerjoin = 393.99
+SELECT
+       DISTINCT first_name, last_name
+FROM
+	customer 
+INNER JOIN payment USING(customer_id);
+```
+
+### ANY
+
+用在與子查詢結果做比較
+
+- 子查詢必須回傳剛好一個 coloumn
+- ANY  之前必須使用關係運算子，也就是大於、等於、小於那些
+- 如果符合條件回傳 true 否則回傳 false
+- `=ANY` == `IN`
+- `<> ANY` != NOT IN; 
+  - `x <> ANY (a,b,c)`
+  - = `x <> a OR <> b OR x <> c`
+
+```sql
+-- 尋找影片長度大於 Min(Max(category))
+SELECT title
+FROM film
+WHERE length >= ANY(
+    SELECT MAX( length )
+    FROM film
+    INNER JOIN film_category USING(film_id)
+    GROUP BY  category_id );
+
+```
+
+### ALL
+
+用在與子查詢結果做比較
+
+- ALL  之前必須使用關係運算子，也就是大於、等於、小於那些
+  - `>`: 尋找比子查詢最大值還大的值
+  - `<`: 尋找比子查詢最小值還小的值
+  - `=`: 尋找和子查詢任一值相等的值
+  - `!=`: 尋找和子查詢任一值都不相等的值
+
+```sql
+-- 影片長度大於相同分級裡的平均長度
+SELECT
+    film_id,
+    title,
+    length
+FROM
+    film
+WHERE
+    length > ALL (
+            SELECT
+                ROUND(AVG (length),2)
+            FROM
+                film
+            GROUP BY
+                rating
+    )
+ORDER BY
+    length;
+```
+
+### EXISTS
+
+用在測試子查詢中是否存在任合一筆資料
+
+- 如果子查詢至少有一筆資料則回傳 true，如果沒有則回傳 false。
+- 通常與相關的子查詢一起使用
+- select 的內容不是重點， EXISTS 只關心是否存在任合一筆資料，所以會用 `select 1`
+
+```sql
+-- 尋找曾經交易金額大於11的顧客姓名
+SELECT first_name,
+       last_name
+FROM customer c
+WHERE EXISTS
+    (SELECT 1
+     FROM payment p
+     WHERE p.customer_id = c.customer_id
+       AND amount > 11 )
+ORDER BY first_name,
+         last_name;
+         
+-- 尋找交易金額從未大於11的顧客姓名
+SELECT first_name,
+       last_name
+FROM customer c
+WHERE NOT EXISTS
+    (SELECT 1
+     FROM payment p
+     WHERE p.customer_id = c.customer_id
+       AND amount > 11 )
+ORDER BY first_name,
+         last_name;
+```
+
+```sql
+-- EXISTS( SELECT NULL) = true
+SELECT
+	first_name,
+	last_name
+FROM
+	customer
+WHERE
+	EXISTS( SELECT NULL )
+ORDER BY
+	first_name,
+	last_name;
+```
+
