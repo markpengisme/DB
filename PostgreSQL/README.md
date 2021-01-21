@@ -2068,3 +2068,67 @@ WHERE id = 3;
 ROLLBACK;
 ```
 
+## Section 11. Import & Export Data
+
+### Import CSV File Into PostgreSQL Table
+
+- person.csv
+
+```
+First Name,Last Name,Date Of Birth,Email
+John,Doe,1995-01-05,john.doe@postgresqltutorial.com
+Jane,Doe,1995-02-05,jane.doe@postgresqltutorial.com
+```
+
+```sql
+-- data
+Drop TABLE IF EXISTS persons;
+CREATE TABLE persons (
+  id SERIAL,
+  first_name VARCHAR(50),
+  last_name VARCHAR(50),
+  dob DATE,
+  email VARCHAR(255),
+  PRIMARY KEY (id)
+);
+```
+
+```sql
+\copy persons(first_name, last_name, dob, email)
+FROM './data/persons.csv'
+DELIMITER ','
+CSV HEADER;
+```
+
+### Export PostgreSQL Table to CSV file
+
+```sql
+\copy persons
+to './data/export_persons.csv'
+DELIMITER ','
+CSV HEADER;
+```
+
+```sql
+\copy persons(first_name,last_name,email) 
+to './data/export_persons_partial.csv'
+DELIMITER ','
+CSV HEADER;
+```
+
+```sql
+\copy (SELECT email FROM persons)
+to './data/export_persons_email.csv'
+with csv
+```
+
+```sql
+-- 清掉db內容
+TRUNCATE TABLE persons 
+RESTART IDENTITY;
+-- 刪掉 db
+DROP TABLE persons;
+-- 刪掉 export 資料
+\! rm data/export_persons*
+```
+
