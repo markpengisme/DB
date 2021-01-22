@@ -2132,3 +2132,379 @@ DROP TABLE persons;
 \! rm data/export_persons*
 ```
 
+## Section 12. Managing Tables
+
+### Data types
+
+[參考doc比較好](https://www.postgresql.org/docs/current/arrays.html)
+
+- boolean
+  - `boolean` or `bool`
+  - 1, yes, y, t, ture == true
+  - 0, no, false, f  == false
+- character
+  - `char(N)`: 固定長度，輸入長度<N填充空，輸入長度>N回報錯誤
+  - `varchar(N)`: 變動長度
+  - `text`: 理論上無限長度
+- numeric
+  - interger
+    - `smallint`: 2-byte有符號整數，-32,768 ~ 32,767
+    - `int`: 4-byte有符號整數，-2,147,483,648 ~ 2,147,483,647
+    - `serial`: 像是MySQL的`AUTO_INCREAMENT`，SQLite的`AUTOINCREAMENT`
+  - float
+    - `float(n)`: n精度浮點數，
+    - `real` / `float8`: 4byte 浮點數/ 8byte浮點數
+    - `numeric` / `numeric(p,s)`: 自訂長度p以且s位小數
+- temporal data
+  - `date`
+  - `time`
+  - `timestamp`
+  - `timestamptz`: timestamp with the timezone
+  - `interval`
+- Array
+- JSON
+  - `JSON`
+  - `JSONB`
+- `UUID`
+- special data types 
+  - box
+  - line
+  - point
+  - lseg: line segment
+  - polygon: closed geometric
+  - inet: IPV4
+  - macaddr
+
+### CREATE TABLE
+
+```sql
+CREATE TABLE [IF NOT EXISTS] table_name (
+   column1 datatype(length) column_contraint,
+   column2 datatype(length) column_contraint,
+   column3 datatype(length) column_contraint,
+   table_constraints
+);
+```
+
+Column Constraints 
+
+- NULL
+- UNIQUE
+- PRIMARY KEY
+- CHECK
+- FOREIGNKEY
+
+```sql
+DROP TABLE IF EXISTS accounts, roles, account_roles;
+-- 帳戶
+CREATE TABLE accounts (
+	user_id serial PRIMARY KEY,
+	username VARCHAR ( 50 ) UNIQUE NOT NULL,
+	password VARCHAR ( 50 ) NOT NULL,
+	email VARCHAR ( 255 ) UNIQUE NOT NULL,
+	created_on TIMESTAMP NOT NULL,
+        last_login TIMESTAMP 
+);
+
+-- 角色
+CREATE TABLE roles(
+   role_id serial PRIMARY KEY,
+   role_name VARCHAR (255) UNIQUE NOT NULL
+);
+
+-- 帳戶角色
+CREATE TABLE account_roles (
+  user_id INT NOT NULL,
+  role_id INT NOT NULL,
+  grant_date TIMESTAMP,
+    
+  PRIMARY KEY (user_id, role_id),
+  FOREIGN KEY (role_id)
+      REFERENCES roles (role_id),
+  FOREIGN KEY (user_id)
+      REFERENCES accounts (user_id)
+);
+```
+
+### SELECT INTO ＆ CREATE TABLE AS
+
+建立新的表並插入查詢的資料。
+
+```sql
+SELECT
+    select_list
+INTO [ TEMPORARY | TEMP | UNLOGGED ] [ TABLE ] new_table_name
+FROM
+    table_name
+WHERE
+    search_condition;
+    
+--
+
+CREATE TABLE IF NOT EXISTS new_table_name (column_name_list) 
+AS query;
+```
+
+```sql
+-- 長度<60分的電影放到暫存表(session scope)
+SELECT
+    film_id,
+    title,
+    length 
+INTO TEMP TABLE short_film
+FROM
+    film
+WHERE
+    length < 60
+ORDER BY
+    title;
+   
+-- PL/pgSQL 用 CREATE TABLE AS
+CREATE TABLE short_film AS
+SELECT
+    film_id,
+    title,
+    length 
+FROM
+    film
+WHERE
+    length < 60
+ORDER BY
+    title;
+```
+
+### Auto-increment Column
+
+```sql
+CREATE TABLE table_name(
+    id SERIAL
+);
+
+-- equal
+CREATE SEQUENCE table_name_id_seq;
+
+CREATE TABLE table_name (
+    id integer NOT NULL DEFAULT nextval('table_name_id_seq')
+);
+
+ALTER SEQUENCE table_name_id_seq
+OWNED BY table_name.id;
+```
+
+將 SERIAL 指定到某個 coloumn PostgreSQL 執行以下動作:
+
+- 建立 sequence 物件
+- 給 coloumn 添加一個 NOT NULL 的限制
+- 將 sequence 的擁有者分給 coloumn
+
+SERIAL 
+
+- SMALLSERIAL: 2bytes
+- SERIAL: 4 bytes, 1 to 2,147,483,647
+- BIGSERIAL: 8 bytes
+
+```sql
+-- 水果
+DROP TABLE IF EXISTS fruits;
+CREATE TABLE fruits(
+   id SERIAL PRIMARY KEY,
+   name VARCHAR NOT NULL
+);
+
+-- 新增橘子
+INSERT INTO fruits(name) 
+VALUES('Orange');
+
+-- 新增蘋果 + id with default
+INSERT INTO fruits(id,name) 
+VALUES(DEFAULT,'Apple')
+RETURNING id;
+
+-- 最近一次產生的序列值
+SELECT currval(pg_get_serial_sequence('fruits', 'id'));
+
+```
+
+### Sequences
+
+根據指定的規範產生有序的整數列表。
+
+```sql
+CREATE SEQUENCE [ IF NOT EXISTS ] sequence_name
+    [ AS { SMALLINT | INT | BIGINT } ]
+    [ INCREMENT [ BY ] increment ]
+    [ MINVALUE minvalue | NO MINVALUE ] 
+    [ MAXVALUE maxvalue | NO MAXVALUE ]
+    [ START [ WITH ] start ] 
+    [ CACHE cache ] 
+    [ [ NO ] CYCLE ]
+    [ OWNED BY { table_name.column_name | NONE } ]
+```
+
+```sql
+-- ascending sequence
+DROP SEQUENCE IF EXISTS mysequence;
+CREATE SEQUENCE mysequence
+INCREMENT 5
+START 100
+CACHE 3; -- prepreallocated and stored in memory for faster access. 
+
+SELECT nextval('mysequence');
+SELECT nextval('mysequence');
+SELECT nextval('mysequence');
+
+-- descending sequence
+DROP SEQUENCE IF EXISTS mysequence2;
+CREATE SEQUENCE mysequence2
+INCREMENT -1
+MINVALUE 1 
+MAXVALUE 3
+START 3
+CYCLE;
+SELECT nextval('mysequence2');
+SELECT nextval('mysequence2');
+SELECT nextval('mysequence2');
+
+-- sequence associated with a table column
+DROP TABLE IF EXISTS order_details;
+DROP SEQUENCE IF EXISTS order_item_id;
+
+CREATE TABLE order_details(
+    order_id SERIAL,
+    item_id INT NOT NULL,
+    item_text VARCHAR NOT NULL,
+    price DEC(10,2) NOT NULL,
+    PRIMARY KEY(order_id, item_id)
+);
+CREATE SEQUENCE order_item_id
+START 10
+INCREMENT 10
+MINVALUE 10
+OWNED BY order_details.item_id;
+
+INSERT INTO 
+    order_details(order_id, item_id, item_text, price)
+VALUES
+    (100, nextval('order_item_id'),'DVD Player',100),
+    (100, nextval('order_item_id'),'Android TV',550),
+    (100, nextval('order_item_id'),'Speaker',250)
+RETURNING *;
+```
+
+```sql
+-- 列出所有 sequence
+SELECT
+    relname sequence_name
+FROM 
+    pg_class 
+WHERE 
+    relkind = 'S';
+```
+
+```sql
+-- drop table 時也會把 sequence 刪掉
+DROP TABLE order_details;
+SELECT nextval('order_item_id');
+```
+
+### Identity Column
+
+GENERATED AS IDENTITY 限制是符合SQL標準的老式 SERIAL 之變體。
+
+```sql
+-- constraint
+column_name type GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY[ ( sequence_option ) ]
+-- add
+ALTER TABLE table_name 
+ALTER COLUMN column_name 
+ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY { ( sequence_option ) }
+-- change
+ALTER TABLE table_name 
+ALTER COLUMN column_name 
+{ SET GENERATED { ALWAYS| BY DEFAULT } | 
+  SET sequence_option | RESTART [ [ WITH ] restart ] }
+-- remove
+ALTER TABLE table_name 
+ALTER COLUMN column_name 
+DROP IDENTITY [ IF EXISTS ]
+```
+
+```sql
+-- GENERATED  ALWAYS v.s. GENERATED BY DEFAULT
+
+-- GENERATED ALWAYS
+DROP TABLE IF EXISTS color;
+CREATE TABLE color (
+    color_id INT GENERATED ALWAYS AS IDENTITY,
+    color_name VARCHAR NOT NULL
+);
+-- auto generate id
+INSERT INTO color(color_name)
+VALUES ('Red');
+-- error, because GENERATED ALWAYS
+INSERT INTO color (color_id, color_name)
+VALUES (2, 'Green'); 
+-- use OVERRIDING SYSTEM VALUE fix error
+INSERT INTO color (color_id, color_name)
+OVERRIDING SYSTEM VALUE 
+VALUES(2, 'Green');
+-- or, alter to generated by default
+ALTER TABLE color
+ALTER COLUMN color_id
+SET GENERATED BY DEFAULT;
+INSERT INTO color
+VALUES (3, 'White');
+```
+
+```sql
+-- sequence option example
+DROP TABLE IF EXISTS color;
+
+CREATE TABLE color (
+    color_id INT GENERATED BY DEFAULT AS IDENTITY 
+    (START WITH 10 INCREMENT BY 10),
+    color_name VARCHAR NOT NULL
+);
+
+INSERT INTO color (color_name)
+VALUES ('Orange'),('Purple')
+Returning *;
+```
+
+```sql
+DROP TABLE IF EXISTS shape;
+CREATE TABLE shape (
+    shape_id INT NOT NULL,
+    shape_name VARCHAR NOT NULL
+);
+-- Adding identity
+ALTER TABLE shape 
+ALTER COLUMN shape_id ADD GENERATED ALWAYS AS IDENTITY;
+
+\d shape
+
+-- Change identity
+ALTER TABLE shape
+ALTER COLUMN shape_id
+SET GENERATED BY DEFAULT
+RESTART WITH 100
+SET INCREMENT 10;
+
+\d shape
+
+INSERT INTO shape (shape_name)
+VALUES ('Square'), ('Circle')
+Returning *;
+
+-- remove identity
+ALTER TABLE shape
+ALTER COLUMN shape_id
+DROP IDENTITY IF EXISTS;
+
+\d shape
+```
+
+
+
+
+
