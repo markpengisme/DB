@@ -2764,3 +2764,350 @@ ALTER TABLE contact_backup ADD UNIQUE(email);
 \d contact_backup
 ```
 
+
+
+## Section 13. Understanding PostgreSQL Constraints
+
+### PRIMARY KEY
+
+- PK 技術上來說 = NOT NULL + UNIQUE
+- 當你新增PK時，PostgreSQL 會建立一個 B-tree index
+- 如果不指定名字，會自動把 PK constraint 命名為`table-name_pkey`
+- 要命名的話使用`CONSTRAINT constraint_name PRIMARY KEY(column_1, column_2,...);`
+
+```sql
+DROP TABLE IF EXISTS po_headers, po_items, products;
+-- 設定某個 column 當作 pk
+CREATE TABLE po_headers (
+	po_no INTEGER PRIMARY KEY,
+	vendor_no INTEGER,
+	description TEXT,
+	shipping_address TEXT
+);
+
+-- 設定多個 column 當作 pk
+CREATE TABLE po_items (
+	po_no INTEGER,
+	item_no INTEGER,
+	product_no INTEGER,
+	qty INTEGER,
+	net_price NUMERIC,
+	PRIMARY KEY (po_no, item_no)
+);
+-- 建完表後新增pk
+CREATE TABLE products (
+	product_no INTEGER,
+	description TEXT,
+	product_cost NUMERIC
+);
+
+-- ADD PK
+ALTER TABLE products 
+ADD PRIMARY KEY (product_no);
+
+-- DROP PK
+ALTER TABLE products
+DROP CONSTRAINT products_pkey;
+
+```
+
+```sql
+-- data
+DROP TABLE IF EXISTS vendors;
+CREATE TABLE vendors (name VARCHAR(255));
+INSERT INTO vendors (NAME)
+VALUES ('Microsoft'), ('IBM'), ('Apple'), ('Samsung');
+
+-- 針對存在的表新增 SERIAL PRIMARY KEY
+ALTER TABLE vendors ADD COLUMN id SERIAL PRIMARY KEY;
+SELECT
+	id, name
+FROM
+	vendors;
+```
+
+### **FOREIGN** KEY
+
+在一個表(child)中引用另一個表(parent)的PK，這樣有助於維護參照的完整性
+
+```sql
+[CONSTRAINT fk_name]
+   FOREIGN KEY(fk_columns) 
+   REFERENCES parent_table(parent_key_columns)
+   [ON DELETE delete_action]
+   [ON UPDATE update_action]
+```
+
+action
+
+- NO ACTION(default)
+- SET NULL
+- SET DEFAULT
+- RESTRICT
+- CASCADE
+
+```sql
+-- data
+DROP TABLE IF EXISTS customers, contacts;
+
+CREATE TABLE customers(
+   customer_id INT GENERATED ALWAYS AS IDENTITY,
+   customer_name VARCHAR(255) NOT NULL,
+   PRIMARY KEY(customer_id)
+);
+
+CREATE TABLE contacts(
+   contact_id INT GENERATED ALWAYS AS IDENTITY,
+   customer_id INT,
+   contact_name VARCHAR(255) NOT NULL,
+   phone VARCHAR(15),
+   email VARCHAR(100),
+   PRIMARY KEY(contact_id),
+-- FK
+   CONSTRAINT fk_customer
+      FOREIGN KEY(customer_id) 
+	  REFERENCES customers(customer_id)
+);
+```
+
+```sql
+-- 刪不掉因為 ON DELETE default = NO ACTION
+TRUNCATE TABLE customers, contacts;
+INSERT INTO customers(customer_name)
+VALUES('BlueBird Inc'),
+      ('Dolphin LLC');	   
+	   
+INSERT INTO contacts(customer_id, contact_name, phone, email)
+VALUES(1,'John Doe','(408)-111-1234','john.doe@bluebird.dev'),
+      (1,'Jane Doe','(408)-111-1235','jane.doe@bluebird.dev'),
+      (2,'David Wright','(408)-222-1234','david.wright@dolphin.dev');
+DELETE FROM customers WHERE customer_id = 1;
+SELECT * FROM contacts;
+```
+
+```sql
+-- Change to ON DELETE CASCADE: Drop -> ADD
+ALTER TABLE contacts
+DROP CONSTRAINT fk_customer;
+
+ALTER TABLE contacts
+ADD CONSTRAINT fk_customer
+FOREIGN KEY (customer_id)
+REFERENCES customers(customer_id)
+ON DELETE CASCADE;
+
+-- 在刪一次
+DELETE FROM customers WHERE customer_id = 1;
+SELECT * FROM contacts;
+```
+
+### CHECK
+
+允許針對某個 column 的值做 constrain，insert 和 update 時沒有達成條件返回 constraint violation error，constraint 預設名字為 `{table}_{column}_check`, e.g.`employees_salary_check`，如果要取名的話`column_name data_type CONSTRAINT constraint_name CHECK(...)`
+
+```sql
+-- 三個CHECK
+DROP TABLE IF EXISTS employees;
+CREATE TABLE employees (
+	id SERIAL PRIMARY KEY,
+	first_name VARCHAR (50),
+	last_name VARCHAR (50),
+	birth_date DATE CHECK (birth_date > '1900-01-01'),
+	joined_date DATE CHECK (joined_date > birth_date),
+	salary numeric CHECK(salary > 0)
+);
+
+-- fail on salary check
+INSERT INTO employees (first_name, last_name, birth_date, joined_date, salary)
+VALUES ('John', 'Doe', '1972-01-01', '2015-07-01', - 100000);
+```
+
+```sql
+-- 新增完表才加 CHECK
+DROP TABLE IF EXISTS prices_list;
+CREATE TABLE prices_list (
+	id serial PRIMARY KEY,
+	product_id INT NOT NULL,
+	price NUMERIC NOT NULL,
+	discount NUMERIC NOT NULL,
+	valid_from DATE NOT NULL,
+	valid_to DATE NOT NULL
+);
+
+-- ADD CHECK
+ALTER TABLE prices_list 
+ADD CONSTRAINT price_discount_check 
+CHECK (
+	price > 0
+	AND discount >= 0
+	AND price > discount
+);
+
+-- ADD CHECK
+ALTER TABLE prices_list 
+ADD CONSTRAINT valid_range_check 
+CHECK (valid_to >= valid_from);
+```
+
+### UNIQUE
+
+```sql
+-- 兩種方法
+DROP TABLE IF EXISTS person;
+CREATE TABLE person (
+	id SERIAL PRIMARY KEY,
+	first_name VARCHAR (50),
+	last_name VARCHAR (50),
+	email VARCHAR (50) UNIQUE
+);
+DROP TABLE IF EXISTS person;
+CREATE TABLE person (
+	id SERIAL  PRIMARY KEY,
+	first_name VARCHAR (50),
+	last_name  VARCHAR (50),
+	email      VARCHAR (50),
+    UNIQUE(email)
+);
+
+-- ADD UNIQUE
+ALTER TABLE person ADD CONSTRAINT unique_name UNIQUE (first_name, last_name);
+
+-- Insert fail
+INSERT INTO person(first_name,last_name,email)
+VALUES('john','doe','first@example.com');
+INSERT INTO person(first_name,last_name,email)
+VALUES('john','doe','second@example.com');
+
+-- DROP UNIQUE
+ALTER TABLE person
+DROP CONSTRAINT unique_name;
+
+INSERT INTO person(first_name,last_name,email)
+VALUES('john','doe','second@example.com');
+
+-- Multiple columns
+DROP TABLE IF EXISTS person;
+CREATE TABLE person (
+	id SERIAL  PRIMARY KEY,
+	first_name VARCHAR (50),
+	last_name  VARCHAR (50),
+	email      VARCHAR (50),
+    UNIQUE(first_name, last_name),
+    UNIQUE(email)
+);
+```
+
+```sql
+-- Add unique using index
+
+-- data
+DROP TABLE IF EXISTS equipment;
+CREATE TABLE equipment (
+	id SERIAL PRIMARY KEY,
+	name VARCHAR (50) NOT NULL,
+	equip_id VARCHAR (16) NOT NULL
+);
+
+-- UNIQUE INDEX
+CREATE UNIQUE INDEX CONCURRENTLY equipment_equip_id 
+ON equipment (equip_id);
+
+-- 看目前狀態，(idle in transaction) = pending
+-- 因為下一步 alter table 需要 exclusive lock
+SELECT
+	datid,
+	datname,
+	usename,
+	state
+FROM
+	pg_stat_activity;
+	
+-- add unique using index
+ALTER TABLE equipment 
+ADD CONSTRAINT unique_equip_id 
+UNIQUE USING INDEX equipment_equip_id;
+```
+
+###  NOT NULL
+
+NULL = not known，不可比較
+
+- IS NULL
+- IS NOT NULL
+
+```sql
+-- CREATE + NOT NULL
+DROP TABLE IF EXISTS invoices;
+CREATE TABLE invoices(
+  id SERIAL PRIMARY KEY,
+  product_id INT NOT NULL,
+  qty numeric NOT NULL CHECK(qty > 0),
+  net_price numeric CHECK(net_price > 0) 
+);
+
+-- ALTER + NOT NULL
+ALTER TABLE invoices
+ALTER COLUMN net_price SET NOT NULL;
+```
+
+```sql
+-- 新增 NOT NULL 到存在的欄位，需要先填入值
+
+-- data
+DROP TABLE IF EXISTS production_orders;
+CREATE TABLE production_orders (
+	id SERIAL PRIMARY KEY,
+	description VARCHAR (40) NOT NULL,
+	material_id VARCHAR (16),
+	qty NUMERIC,
+	start_date DATE,
+	finish_date DATE
+);
+
+INSERT INTO production_orders (description)
+VALUES('Make for Infosys inc.');
+
+-- 填值
+UPDATE production_orders
+SET qty = 1
+WHERE id = 1;
+
+-- SET NOT NULL 
+ALTER TABLE production_orders 
+ALTER COLUMN qty
+SET NOT NULL;
+
+-- 填值
+UPDATE production_orders
+SET material_id = 'ABC',
+    start_date = '2015-09-01',
+    finish_date = '2015-09-01'
+WHERE id = 1;
+
+-- SET NOT NULL
+ALTER TABLE production_orders 
+ALTER COLUMN material_id SET NOT NULL,
+ALTER COLUMN start_date SET NOT NULL,
+ALTER COLUMN finish_date SET NOT NULL;
+```
+
+```sql
+-- 特殊有用的應用 CHECK+NOT NULL，username 和 email 欄位其中一個不是 NULL 就可以
+DROP TABLE IF EXISTS users;
+CREATE TABLE users (
+ id serial PRIMARY KEY,
+ username VARCHAR (50),
+ password VARCHAR (50),
+ email VARCHAR (50),
+ CONSTRAINT username_email_notnull CHECK (
+   NOT (
+     ( username IS NULL  OR  username = '' )
+     AND
+     ( email IS NULL  OR  email = '' )
+   )
+ )
+);
+```
+
+
+
