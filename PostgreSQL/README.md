@@ -2148,7 +2148,7 @@ DROP TABLE persons;
 - boolean
   - `boolean` or `bool`
   - 1, yes, y, t, ture == true
-  - 0, no, false, f  == false
+  - 0, no, n, f,  false  == false
 - character
   - `char(N)`: 固定長度，輸入長度<N填充空，輸入長度>N回報錯誤
   - `varchar(N)`: 變動長度
@@ -3107,6 +3107,390 @@ CREATE TABLE users (
    )
  )
 );
+```
+
+## Section 14. PostgreSQL Data Types in Depth
+
+### Boolean
+
+PostrgreSQL 比較彈性認定
+
+- True: `true`, `'t'`, `'true'`, `'y'`,  `'yes'` ,  `'1'`
+- False:`false`, `'f'`, `'false'`, `'n'`,  `'no'` ,  `'0'` 
+
+```sql
+-- data
+DROP TABLE IF EXISTS stock_availability;
+CREATE TABLE stock_availability (
+   product_id INT PRIMARY KEY,
+   available BOOLEAN NOT NULL
+);
+
+INSERT INTO stock_availability (product_id, available)
+VALUES
+	(100, TRUE),
+	(200, FALSE),
+	(300, 't'),
+	(400, '1'),
+	(500, 'y'),
+	(600, 'yes'),
+	(700, 'no'),
+	(800, '0');
+	
+-- t
+SELECT *
+FROM stock_availability
+WHERE available = 'yes';
+-- t
+SELECT *
+FROM stock_availability
+WHERE available;
+-- f
+SELECT *
+FROM stock_availability
+WHERE available = '0';
+-- f
+SELECT *
+FROM stock_availability
+WHERE NOT available;
+```
+
+```sql
+DROP TABLE IF EXISTS stock_availability;
+-- set default when create
+CREATE TABLE stock_availability (
+   product_id INT PRIMARY KEY,
+   available BOOLEAN NOT NULL DEFAULT TRUE
+);
+INSERT INTO stock_availability (product_id)
+VALUES (900);
+
+-- set default with alter
+ALTER TABLE stock_availability 
+ALTER COLUMN available
+SET DEFAULT FALSE;
+
+INSERT INTO stock_availability (product_id)
+VALUES (1000);
+
+SELECT *
+FROM stock_availability;
+```
+
+### Character Types
+
+- VARCHAR(n): variable-length with length limit
+- CHARACTER(n), CHAR(n): fixed-length, blank padded
+
+- TEXT, VARCHAR: variable unlimited length
+
+> > CHAR 沒有指定n時為 CHAR(1) 
+
+```sql
+-- data
+DROP TABLE IF EXISTS character_tests;
+CREATE TABLE character_tests (
+	id serial PRIMARY KEY,
+	x CHAR,
+	y VARCHAR (10),
+	z TEXT
+);
+
+-- error
+INSERT INTO character_tests (x, y, z)
+VALUES(	'Yes','varchar(n)','This is a very long text for the PostgreSQL text column');
+	
+-- ok
+INSERT INTO character_tests (x, y, z)
+VALUES(	'Y','varchar(n)','This is a very long text for the PostgreSQL text column');
+```
+
+### Numeric
+
+- NUMERIC(precision, scale): e.g.1234.567 has the precision 7 and scale 3.
+- NUMERIC(precision): 0位小數
+- NUMERIC = DECIMAL = 131072位數.16383位小數
+- 如果不需要精度就不應該使用NUMERIC
+- 理論上 NaN = Nan 等於 false， 但PostegreSQL讓NaN之間值相等而且比其他數都大(tree-based indexes)
+
+```sql
+DROP TABLE IF EXISTS products;
+
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    price NUMERIC(5,2)
+);
+
+-- 超過位數四捨五入
+INSERT INTO products (name, price)
+VALUES ('Phone',500.215), 
+       ('Tablet',500.214)
+RETURNING *;
+
+-- error
+INSERT INTO products (name, price)
+VALUES('Phone',123456.21);
+
+-- update to NaN(not a number)
+UPDATE products
+SET price = 'NaN'
+WHERE id = 1;
+
+-- 排序
+SELECT * FROM products
+ORDER BY price DESC;
+```
+
+### Integer
+
+- SMALLINT: 2bytes
+- INTEGER, INT: 4bytes
+- BIGINT: 8bytes
+- 超過範圍會發出錯誤
+- 不像 MySQL，PostgreSQL 不提供 unsigned integer
+
+### Date
+
+- yyyy-mm-dd
+
+```sql
+-- data
+DROP TABLE IF EXISTS documents;
+
+CREATE TABLE documents (
+	document_id serial PRIMARY KEY,
+	header_text VARCHAR (255) NOT NULL,
+	posting_date DATE NOT NULL DEFAULT CURRENT_DATE
+);
+
+-- yyyy-mm-dd
+INSERT INTO documents (header_text, posting_date)
+VALUES('Billing to customer ABC', '2020-01-01');
+
+-- CURRENT_DATE
+INSERT INTO documents (header_text)
+VALUES('Billing to customer XYZ');
+
+SELECT * FROM documents;
+```
+
+```sql
+-- data
+DROP TABLE IF EXISTS employees;
+
+CREATE TABLE employees (
+	employee_id serial PRIMARY KEY,
+	first_name VARCHAR (255),
+	last_name VARCHAR (355),
+	birth_date DATE NOT NULL,
+	hire_date DATE NOT NULL
+);
+
+INSERT INTO employees (first_name, last_name, birth_date, hire_date)
+VALUES ('Shannon','Freeman','1980-01-01','2005-01-01'),
+	   ('Sheila','Wells','1978-02-05','2003-01-01'),
+	   ('Ethel','Webb','1975-01-01','2001-01-01');
+	   
+-- 今天日期 CURRENT_DATE
+SELECT NOW()::date;
+SELECT CURRENT_DATE;
+
+-- 輸出特定格式 TO_CHAR()
+SELECT TO_CHAR(NOW() :: DATE, 'dd/mm/yyyy');
+SELECT TO_CHAR(NOW() :: DATE, 'Mon dd, yyyy');
+
+-- 日期區間(日) A-B
+SELECT
+	first_name,
+	last_name,
+	now() - hire_date as diff
+FROM
+	employees;
+	
+-- 年月日 AGE()
+SELECT
+	employee_id,
+	first_name,
+	last_name,
+	AGE(birth_date)
+FROM
+	employees;
+
+SELECT
+	employee_id,
+	first_name,
+	last_name,
+	AGE(now(), hire_date) as diff
+FROM
+	employees;
+	
+-- 提取 EXTRACT, 可以extract很多參考doc
+SELECT
+	employee_id,
+	first_name,
+	last_name,
+	EXTRACT (YEAR FROM birth_date) AS YEAR,
+	EXTRACT (MONTH FROM birth_date) AS MONTH,
+	EXTRACT (DAY FROM birth_date) AS DAY,
+	EXTRACT (QUARTER FROM birth_date) AS QUARTER,
+	EXTRACT (WEEK FROM birth_date) AS WEEK
+FROM
+	employees;
+```
+
+### Timestamp
+
+- timestamp
+- timestamptz(with timezone): 以UTC儲存再根據timezone自動轉換，比較好
+
+```sql
+-- timeSELECT timezone('America/New_York','2016-06-01 00:00');
+SELECT timezone('America/New_York','2016-06-01 00:00'::timestamp);
+stamp vs timestampz
+DROP TABLE IF EXISTS timestamp_demo;
+CREATE TABLE timestamp_demo (
+    ts TIMESTAMP, 
+    tstz TIMESTAMPTZ
+);
+SET timezone = 'America/Los_Angeles';
+SHOW TIMEZONE;
+INSERT INTO timestamp_demo (ts, tstz)
+VALUES('2016-06-22 19:10:25-07','2016-06-22 19:10:25-07');
+SELECT * FROM timestamp_demo;
+SET timezone = 'Asia/Taipei';
+SELECT * FROM timestamp_demo;
+```
+
+常用func
+
+```sql
+SELECT NOW();
+SELECT CURRENT_TIMESTAMP;
+SELECT TIMEOFDAY(); -- text
+
+-- 時區轉換，timezone(zone, timestamp), PostgreSQL默認先把text轉為timestamptz
+SHOW TIMEZONE;
+SELECT timezone('America/New_York','2016-06-01 00:00:00');
+```
+
+### Interval
+
+- input: `quantity unit [quantity unit...] [direction]`
+
+  - uint: `microsecond`, `millisecond`, `second`, `minute`, `hour`, `day`, `week`, `month`, `year`, `decade`, `century`, `millennium`
+  - e.g.`1 year 2 months 3 days` , `2 weeks ago`
+
+- iso 8601: `P quantity unit [ quantity unit ...] [ T [ quantity unit ...]]` or `P [ years-months-days ] [ T hours:minutes:seconds ]`
+
+  - e.g.`P6Y5M4DT3H2M1S` = ` P0006-05-04T03:02:01`
+
+- output: `SET intervalstyle`
+
+  ```sql
+  SET intervalstyle = 'sql_standard';
+  SELECT INTERVAL '6 years 5 months 4 days 3 hours 2 minutes 1 second';
+  
+  SET intervalstyle = 'postgres';
+  SELECT INTERVAL '6 years 5 months 4 days 3 hours 2 minutes 1 second';
+  
+  SET intervalstyle = 'postgres_verbose';
+  SELECT INTERVAL '6 years 5 months 4 days 3 hours 2 minutes 1 second';
+  
+  SET intervalstyle = 'iso_8601';
+  SELECT INTERVAL '6 years 5 months 4 days 3 hours 2 minutes 1 second';
+  ```
+
+- operators: `+ - * /`
+
+  ```sql
+  SELECT INTERVAL '2h 50m' + INTERVAL '10m';
+  SELECT INTERVAL '2h 50m' - INTERVAL '50m';
+  SELECT 600 * INTERVAL '1 minute';
+  SELECT interval '1 hour' / 1.5;
+  ```
+
+- `TO_CHAR(interval,format)`,將時間轉成字串 format 請參考https://www.postgresql.org/docs/current/functions-formatting.html
+
+  ```sql
+  SELECT
+      TO_CHAR(
+          INTERVAL '17h 20m 05s',
+          'HH24:MI:SS'
+      );
+  ```
+
+- `EXTRACT(field FROM interval)`: 提取部分, field請參考https://www.postgresql.org/docs/13/functions-datetime.html#FUNCTIONS-DATETIME-EXTRACT
+
+  ```sql
+  SELECT
+      EXTRACT (
+          MINUTE
+          FROM
+              INTERVAL '5 hours 21 minutes'
+      );
+  ```
+
+- Adjusting
+
+  - justify_days(): days -> months
+  - justify_hours(): hours -> dats
+  - justify_interval() = justifydays() + justifyhours()
+
+  ```sql
+  SELECT
+      justify_days(INTERVAL '30 days'),
+      justify_hours(INTERVAL '24 hours'),
+      justify_interval(interval '1 year -1 hour');
+  ```
+
+### Time
+
+- HH:MM[.pppppp]
+  HH:MM:SS[.pppppp]
+  HHMMSS[.pppppp]
+
+```sql
+-- data
+DROP TABLE IF EXISTS shifts;
+CREATE TABLE shifts (
+    id serial PRIMARY KEY,
+    shift_name VARCHAR NOT NULL,
+    start_at TIME NOT NULL,
+    end_at TIME NOT NULL
+);
+
+-- time
+INSERT INTO shifts(shift_name, start_at, end_at)
+VALUES('Morning', '08:00:00', '120000'),
+      ('Afternoon', '13:00:00', '17:00'),
+      ('Night', '18:00:00', '22:00:00')
+RETURNING *;
+
+-- current_time(p) -- with time zone
+SELECT CURRENT_TIME(6);
+
+-- local_time(p) -- without time zone
+SELECT LOCALTIME(0);
+
+--AT TIME ZONE
+---- add timezone
+SELECT TIMESTAMP '2001-02-16 20:38:40' AT TIME ZONE 'America/Denver';
+---- shift timezone
+SELECT TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40+08' AT TIME ZONE 'America/Denver'; --
+SELECT TIMESTAMP '2001-02-16 20:38:40' AT TIME ZONE 'Asia/Tokyo' AT TIME ZONE 'America/Chicago';
+
+-- extract
+SELECT
+    LOCALTIME,
+    EXTRACT (HOUR FROM LOCALTIME) as hour,
+    EXTRACT (MINUTE FROM LOCALTIME) as minute, 
+    EXTRACT (SECOND FROM LOCALTIME) as second,
+    EXTRACT (milliseconds FROM LOCALTIME) as milliseconds;
+    
+-- operate
+SELECT time '10:00' - time '12:00' AS result;
+SELECT LOCALTIME + interval '4 hours' AS result;
 ```
 
 
