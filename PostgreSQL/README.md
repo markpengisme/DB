@@ -3493,5 +3493,390 @@ SELECT time '10:00' - time '12:00' AS result;
 SELECT LOCALTIME + interval '4 hours' AS result;
 ```
 
+### UUID
+
+Universal Unique Identifier, RFC412, 由演算法生成的 128 bit 值，因為唯一性的特徵常在分散式系統中使用。安裝`uuid-ossp`第三方模組。
+
+```sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- v1 base on MAC address, timestamp, and random value
+SELECT uuid_generate_v1();
+
+-- v4 solely based on random numbers
+SELECT uuid_generate_v4();
+```
+
+ ```sql
+-- use uuid
+DROP TABLE IF EXISTS contacts;
+CREATE TABLE contacts (
+    contact_id uuid DEFAULT uuid_generate_v4 (),
+    first_name VARCHAR NOT NULL,
+    last_name VARCHAR NOT NULL,
+    email VARCHAR NOT NULL,
+    phone VARCHAR,
+    PRIMARY KEY (contact_id)
+);
+
+INSERT INTO contacts (
+    first_name,
+    last_name,
+    email,
+    phone
+)
+VALUES
+    (
+        'John',
+        'Smith',
+        'john.smith@example.com',
+        '408-237-2345'
+    ),
+    (
+        'Jane',
+        'Smith',
+        'jane.smith@example.com',
+        '408-237-2344'
+    ),
+    (
+        'Alex',
+        'Smith',
+        'alex.smith@example.com',
+        '408-237-2343'
+    )
+    RETURNING *;
+ ```
+
+### ARRAY
+
+PostgreSQL允許你定義一個column為任何有效資料類型的陣列，包括內建類型、自定義類型或枚舉類型。
+
+```sql
+-- TEXT array 
+DROP TABLE IF EXISTS contacts;
+CREATE TABLE contacts (
+	id serial PRIMARY KEY,
+	name VARCHAR (100),
+	phones TEXT []
+);
+
+-- 法一 ARRAY[,]
+INSERT INTO contacts (name, phones)
+VALUES('John Doe',ARRAY [ '(408)-589-5846','(408)-589-5555' ]);
+
+-- 法二 {,}
+INSERT INTO contacts (name, phones)
+VALUES('Lily Bush','{"(408)-589-5841"}'),
+      ('William Gate','{"(408)-589-5842","(408)-589-58423"}');
+      
+--- 讀取(注意：陣列第一個元素是1)
+SELECT
+	name,
+	phones [ 1 ]
+FROM
+	contacts;
+	
+-- 修改
+UPDATE contacts
+SET phones [2] = '(408)-589-5843'
+WHERE ID = 3
+RETURNING *;
+
+-- 搜尋
+SELECT
+	name,
+	phones
+FROM
+	contacts
+WHERE
+	'(408)-589-5555' = ANY (phones);
+	
+-- 展開
+SELECT
+	name,
+	unnest(phones)
+FROM
+	contacts;
+```
+
+### hstore
+
+hstore存 key/value
+
+```sql
+-- enable
+CREATE EXTENSION hstore;
+
+-- example
+DROP TABLE IF EXISTS books;
+CREATE TABLE books (
+	id serial primary key,
+	title VARCHAR (255),
+	attr hstore
+);
+
+-- 新增
+INSERT INTO books (title, attr)
+VALUES
+	(
+        'PostgreSQL Tutorial',
+        '"paperback" => "243",
+        "publisher" => "postgresqltutorial.com",
+        "language"  => "English",
+        "ISBN-13"   => "978-1449370000",
+        "weight"    => "11.2 ounces"'
+	);
+	
+INSERT INTO books (title, attr)
+VALUES
+	(
+		'PostgreSQL Cheat Sheet',
+		'"paperback" => "5",
+        "publisher" => "postgresqltutorial.com",
+        "language"  => "English",
+        "ISBN-13"   => "978-1449370001",
+        "weight"    => "1 ounces"'
+	);
+	
+-- 查詢各書的 isbn-13
+SELECT
+	title,
+	attr -> 'ISBN-13' AS isbn
+FROM
+	books;
+
+-- 查詢isbn-13=?的書和重量
+SELECT
+	title,
+    attr -> 'weight' AS weight
+FROM
+	books
+WHERE
+	attr -> 'ISBN-13' = '978-1449370000';
+	
+-- 加入其他key pair
+UPDATE books
+SET attr = attr || '"freeshipping"=>"yes"' :: hstore
+RETURNING title, attr -> 'freeshipping' as freeshipping;
+
+-- 修改 key pair
+UPDATE books
+SET attr = attr || '"freeshipping"=>"no"' :: hstore
+RETURNING title, attr -> 'freeshipping' as freeshipping;
+
+-- 刪除 key pair
+UPDATE books
+SET attr = delete(attr, 'freeshipping')
+RETURNING title, attr -> 'freeshipping' as freeshipping;
+
+-- 確認有key ?
+SELECT
+  title,
+  attr->'publisher' as publisher
+FROM
+	books
+WHERE
+	attr ? 'publisher';
+
+-- 確認有多個key ?&
+SELECT
+	title,
+	attr->'language' as language,
+	attr->'weight' as weight
+FROM
+	books
+WHERE
+	attr ?& ARRAY [ 'language', 'weight' ];
+	
+-- 確認有 keypair @>
+SELECT
+	title
+FROM
+	books
+WHERE
+	attr @> '"weight"=>"11.2 ounces"' :: hstore;
+	
+-- 列出所有key return array
+SELECT
+	akeys (attr)
+FROM
+	books;
+
+-- 列出所有key return assest
+SELECT
+	skeys (attr)
+FROM
+	books;
+	
+-- 列出所有value return array
+SELECT
+	avals (attr)
+FROM
+	books;
+
+-- 列出所有value return assest
+SELECT
+	svals (attr)
+FROM
+	books;
+	
+-- hstore -> json
+SELECT
+  title,
+  hstore_to_json (attr) json
+FROM
+  books;
+-- hsotre -> set
+SELECT
+	title,
+	(EACH(attr) ).*
+FROM
+	books;
+```
+
+### JSON
+
+- `->` : 拿 JSON 欄位資料, return JSON
+- `-->`: 拿 JSON 欄位資料, return TEXT
+
+```sql
+DROP TABLE IF EXISTS orders;
+
+-- example
+CREATE TABLE orders (
+	id serial NOT NULL PRIMARY KEY,
+	info json NOT NULL
+);
+
+-- 新增
+INSERT INTO orders (info)
+VALUES
+    ('{ "customer": "John Doe", "items": {"product": "Beer","qty": 6}}'),
+	('{ "customer": "Lily Bush", "items": {"product": "Diaper","qty": 24}}'),
+	('{ "customer": "Josh William", "items": {"product": "Toy Car","qty": 1}}'),
+    ('{ "customer": "Mary Clark", "items": {"product": "Toy Train","qty": 2}}');
+    
+-- 查詢
+SELECT info FROM orders;
+
+SELECT info ->> 'customer' AS customer
+FROM orders;
+
+SELECT info -> 'items' ->> 'product' as product
+FROM orders;
+
+-- + where
+SELECT *
+FROM orders
+WHERE info -> 'items' ->> 'product' = 'Diaper';
+
+-- cast 轉型
+SELECT *
+FROM orders
+WHERE CAST ( info -> 'items' ->> 'qty' AS INTEGER) = 2;
+
+-- aggregate func
+SELECT 
+   MIN (CAST (info -> 'items' ->> 'qty' AS INTEGER)),
+   MAX (CAST (info -> 'items' ->> 'qty' AS INTEGER)),
+   SUM (CAST (info -> 'items' ->> 'qty' AS INTEGER)),
+   AVG (CAST (info -> 'items' ->> 'qty' AS INTEGER))
+FROM orders;
+
+
+-- 查詢 keys, json_object_keys
+SELECT json_object_keys (info)
+FROM orders;
+
+-- 查詢型別， json_typeof 
+SELECT json_typeof (info->'items'->'qty')
+FROM orders;
+```
+
+### User-defined Data Types
+
+- CREATE DOMAIN: 自定義型別加上可選擇限制條件
+
+```sql
+DROP TABLE IF EXISTS mailing_list;
+
+-- varchar + check
+CREATE TABLE mailing_list (
+    id SERIAL PRIMARY KEY,
+    first_name VARCHAR NOT NULL,
+    last_name VARCHAR NOT NULL,
+    email VARCHAR NOT NULL,
+    CHECK (
+    	-- !~ is POSIX RE
+        first_name !~ '\s'
+        AND last_name !~ '\s'
+    )
+);
+
+-- 自訂型別
+DROP TABLE IF EXISTS mailing_list;
+DROP DOMAIN IF EXISTS contact_name;
+CREATE DOMAIN contact_name AS 
+   VARCHAR NOT NULL CHECK (value !~ '\s');
+CREATE TABLE mailing_list (
+    id serial PRIMARY KEY,
+    first_name contact_name,
+    last_name contact_name,
+    email VARCHAR NOT NULL
+);
+
+-- insert fail
+INSERT INTO mailing_list (first_name, last_name, email)
+VALUES('Jame V','Doe','jame.doe@example.com');
+-- alter & delete -> ALTER DOMAIN or DROP DOMAIN
+
+-- 查看 domain
+\dD
+```
+
+- CREATE TYPE: 自定義複合類型
+
+```sql
+-- 複合類型
+DROP TYPE IF EXISTS film_summary;
+CREATE TYPE film_summary AS (
+    film_id INT,
+    title VARCHAR,
+    release_year SMALLINT
+);
+
+-- Use in table
+DROP TABLE IF EXISTS fs;
+CREATE TABLE fs (
+	summary film_summary,
+    upload_date DATE
+);
+INSERT INTO fs
+VALUES (ROW(1,'happy 2021',2021), NOW())
+RETURNING *;
+
+-- 查看 type
+\dT
+```
+
+```
+-- Use in SP
+CREATE OR REPLACE FUNCTION get_film_summary (f_id INT) 
+    RETURNS film_summary AS 
+$$ 
+SELECT
+    film_id,
+    title,
+    release_year
+FROM
+    film
+WHERE
+    film_id = f_id ; 
+$$ 
+LANGUAGE SQL;
+
+SELECT * FROM get_film_summary (40);
+```
+
 
 
