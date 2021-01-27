@@ -2143,7 +2143,7 @@ DROP TABLE persons;
 
 ### Data types
 
-[參考doc比較好](https://www.postgresql.org/docs/current/arrays.html)
+[參考doc比較好](https://www.postgresql.org/docs/13/datatype.html)
 
 - boolean
   - `boolean` or `bool`
@@ -2160,7 +2160,7 @@ DROP TABLE persons;
     - `serial`: 像是MySQL的`AUTO_INCREAMENT`，SQLite的`AUTOINCREAMENT`
   - float
     - `float(n)`: n精度浮點數，
-    - `real` / `float8`: 4byte 浮點數/ 8byte浮點數
+    - `real` / `double precision`: 4byte 浮點數/ 8byte浮點數
     - `numeric` / `numeric(p,s)`: 自訂長度p以且s位小數
 - temporal data
   - `date`
@@ -3207,6 +3207,10 @@ VALUES(	'Y','varchar(n)','This is a very long text for the PostgreSQL text colum
 
 ### Numeric
 
+- float4 = real = 4 byte
+- float8 = double precision = 8 byte
+- float(n)
+
 - NUMERIC(precision, scale): e.g.1234.567 has the precision 7 and scale 3.
 - NUMERIC(precision): 0位小數
 - NUMERIC = DECIMAL = 131072位數.16383位小數
@@ -3878,5 +3882,315 @@ LANGUAGE SQL;
 SELECT * FROM get_film_summary (40);
 ```
 
+## Section 15. Conditional Expressions & Operators
 
+### CASE
+
+像是 if/else 一樣的表達式，可以用在 SELECT, WHERE, GROUP BY, HAVING。
+
+```sql
+CASE 
+      WHEN condition_1  THEN result_1
+      WHEN condition_2  THEN result_2
+      [WHEN ...]
+      [ELSE else_result]
+END
+```
+
+```sql
+-- CASE 三種情形
+SELECT title,
+       length,
+       CASE
+           WHEN length> 0
+                AND length <= 50 THEN 'Short'
+           WHEN length > 50
+                AND length <= 120 THEN 'Medium'
+           WHEN length> 120 THEN 'Long'
+       END as duration
+FROM film
+ORDER BY duration, title;
+
+-- CASE + aggregate
+SELECT
+	SUM (CASE
+               WHEN rental_rate = 0.99 THEN 1
+	       ELSE 0
+	      END
+	) AS "Economy",
+	SUM (
+		CASE
+		WHEN rental_rate = 2.99 THEN 1
+		ELSE 0
+		END
+	) AS "Mass",
+	SUM (
+		CASE
+		WHEN rental_rate = 4.99 THEN 1
+		ELSE 0
+		END
+	) AS "Premium"
+FROM
+	film;
+```
+
+PostgreSQL提供了另一種CASE表達式形式，稱為簡單形式
+
+```sql
+CASE expression
+   WHEN value_1 THEN result_1
+   WHEN value_2 THEN result_2 
+   [WHEN ...]
+ELSE
+   else_result
+END
+```
+
+```sql
+-- simple case
+SELECT title,
+       rating,
+       CASE rating
+           WHEN 'G' THEN 'General Audiences'
+           WHEN 'PG' THEN 'Parental Guidance Suggested'
+           WHEN 'PG-13' THEN 'Parents Strongly Cautioned'
+           WHEN 'R' THEN 'Restricted'
+           WHEN 'NC-17' THEN 'Adults Only'
+       END rating_description
+FROM film
+ORDER BY title;
+
+-- simple case + aggregate
+SELECT
+       SUM(CASE rating
+             WHEN 'G' THEN 1 
+		     ELSE 0 
+		   END) "General Audiences",
+       SUM(CASE rating
+             WHEN 'PG' THEN 1 
+		     ELSE 0 
+		   END) "Parental Guidance Suggested",
+       SUM(CASE rating
+             WHEN 'PG-13' THEN 1 
+		     ELSE 0 
+		   END) "Parents Strongly Cautioned",
+       SUM(CASE rating
+             WHEN 'R' THEN 1 
+		     ELSE 0 
+		   END) "Restricted",
+       SUM(CASE rating
+             WHEN 'NC-17' THEN 1 
+		     ELSE 0 
+		   END) "Adults Only"
+FROM film;
+```
+
+### COALESCE
+
+COALESCE 接受無限個參數，並回傳第一個不是 NULL 的參數。和MySQL 的 IFNULL, ORACLE 的NVL 一樣。(MsSQL的`ISNULL(expression, replacement)`)
+
+```sql
+SELECT COALESCE (1, 2);
+SELECT COALESCE (NULL, 2 , 1);
+```
+
+```sql
+-- data
+DROP TABLE IF EXISTS items;
+CREATE TABLE items (
+	ID serial PRIMARY KEY,
+	product VARCHAR (100) NOT NULL,
+	price NUMERIC NOT NULL,
+	discount NUMERIC
+);
+INSERT INTO items (product, price, discount)
+VALUES
+	('A', 1000 ,10),
+	('B', 1500 ,20),
+	('C', 800 ,5),
+	('D', 500, NULL);
+
+-- 顯示凈價，如果有discount就用沒有就0
+SELECT
+	product,
+	(price - COALESCE(discount,0)) AS net_price
+FROM
+	items;
+-- 原本要寫那麼長
+SELECT
+	product,
+	(
+		price - CASE
+            WHEN discount IS NULL THEN
+                0
+            ELSE
+                discount
+            END
+	) AS net_price
+FROM
+	items;
+```
+
+### NULLIF
+
+如果 arg1 = arg2 回傳 null, 否則回傳 arg1
+
+```sql
+NULLIF(argument_1,argument_2);
+```
+
+```sql
+-- e.g.
+SELECT
+	NULLIF (1, 1); -- return NULL
+
+SELECT
+	NULLIF (1, 0); -- return 1
+
+SELECT
+	NULLIF ('A', 'B'); -- return A
+```
+
+```sql
+-- data
+DROP TABLE IF EXISTS posts;
+CREATE TABLE posts (
+  id serial primary key,
+	title VARCHAR (255) NOT NULL,
+	excerpt VARCHAR (150),
+	body TEXT,
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMP
+);
+INSERT INTO posts (title, excerpt, body)
+VALUES
+      ('test post 1','test post excerpt 1','test post body 1'),
+      ('test post 2','','test post body 2'),
+      ('test post 3', null ,'test post body 3');
+      
+      
+-- NULLIF + COALESCE 達到：如果沒有文章節錄或為空白就擷取body前40個字元
+SELECT
+	id,
+	title,
+	COALESCE (
+		NULLIF (excerpt, ''),
+		LEFT (body, 40)
+	)
+FROM
+	posts;
+```
+
+```sql
+-- data
+DROP TABLE IF EXISTS members;
+CREATE TABLE members (
+	ID serial PRIMARY KEY,
+	first_name VARCHAR (50) NOT NULL,
+	last_name VARCHAR (50) NOT NULL,
+	gender SMALLINT NOT NULL -- 1: male, 2 female
+);
+INSERT INTO members (
+	first_name,
+	last_name,
+	gender
+)
+VALUES
+	('John', 'Doe', 1),
+	('David', 'Dave', 1),
+	('Bush', 'Lily', 2);
+DELETE
+FROM
+	members
+WHERE
+	gender = 2;
+-- 算男女比例避免除0錯誤, 如果女生等於0就把它變成null
+SELECT
+	(
+		SUM (
+			CASE
+			WHEN gender = 1 THEN
+				1
+			ELSE
+				0
+			END
+		) / NULLIF (
+			SUM (
+				CASE
+				WHEN gender = 2 THEN
+					1
+				ELSE
+					0
+				END
+			),
+			0
+		)
+	) * 100 AS "Male/Female ratio"
+FROM
+	members;
+
+```
+
+### CAST
+
+轉換型態`CAST ( expression AS target_type )`or`expression::type`
+
+```sql
+-- string -> int
+SELECT
+	CAST ('100' AS INTEGER),
+	'100'::INT;
+	
+-- string -> date
+SELECT
+   CAST ('2015-01-01' AS DATE),
+   '01-OCT-2015'::DATE;
+   
+-- string -> double
+SELECT
+   CAST ('10.2' AS DOUBLE PRECISION),
+   '1.11'::DOUBLE PRECISION;
+   
+-- string -> boolean
+SELECT 
+   CAST('true' AS BOOLEAN),
+   CAST('false' as BOOLEAN),
+   CAST('T' as BOOLEAN),
+   CAST('F' as BOOLEAN);
+   
+-- string -> timestamp
+SELECT '2019-06-15 14:30:20'::timestamp;
+
+-- string -> interval
+SELECT '15 minute'::interval,
+        '2 hour'::interval,
+        '1 day'::interval,
+        '2 week'::interval,
+        '3 month'::interval;
+```
+
+```sql
+-- data
+DROP TABLE IF EXISTS ratings;
+CREATE TABLE ratings (
+	ID serial PRIMARY KEY,
+	rating VARCHAR (1) NOT NULL
+);
+
+INSERT INTO ratings (rating)
+VALUES
+	('A'),('B'),('C'),('1'),('2'),('3');
+	
+-- 如果是數字就轉換，不是數字就=0
+SELECT
+	id,
+	CASE
+		WHEN rating~E'^\\d+$' THEN
+			CAST (rating AS INTEGER)
+		ELSE
+			0
+		END as rating
+FROM
+	ratings;
+```
 
