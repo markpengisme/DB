@@ -4194,3 +4194,71 @@ FROM
 	ratings;
 ```
 
+## Section 16. PostgreSQL Utilities
+
+### psql
+
+```sh
+## conect
+psql -d database -U  user -W
+psql -h host -d database -U user -W
+psql -U user -h host "dbname=db sslmode=require"
+
+## switch db
+\c dbname username
+
+## list db
+\l
+
+## list table
+\dt
+
+## describe table
+\d table_name
+
+## list schema(a schema is a collection of database objects linked with a particular database username.)
+\dn
+
+## list func
+\df
+
+## list view
+\dv
+
+## list user
+\du
+
+## execute previous command
+\g
+
+## comand history
+\s
+\s filename
+
+## execute psql command from a file
+\i filename
+
+## help(? for psql, h for sql statement)
+\?
+\h
+
+## timing
+\timing
+
+## execute command in shell
+\! COMMAND
+
+## edit on editor
+\e
+\ef [function name]
+
+## output align(對齊)
+\a
+
+## output HTML
+\H
+
+## quit
+\q
+```
+
