@@ -4262,3 +4262,221 @@ psql -U user -h host "dbname=db sslmode=require"
 \q
 ```
 
+## Section 17. PostgreSQL Recipes
+
+### Compare two tables using EXCEPT and UNION
+
+```sql
+-- data
+DROP TABLE IF EXISTS foo, bar;
+CREATE TABLE foo (
+	ID INT PRIMARY KEY,
+	NAME VARCHAR (50)
+);
+INSERT INTO foo (ID, NAME)
+VALUES
+	(1, 'a'),
+	(2, 'b');
+CREATE TABLE bar (
+	ID INT PRIMARY KEY,
+	NAME VARCHAR (50)
+);
+INSERT INTO bar (ID, NAME)
+VALUES
+	(1, 'a'),
+	(2, 'c');
+    
+-- EXCEPT: Compare data to find data in foo not in bar
+SELECT
+	ID,
+	NAME,
+	'not in bar' AS note
+FROM
+	foo
+EXCEPT
+	SELECT
+		ID,
+		NAME,
+		'not in bar' AS note
+	FROM
+		bar;
+
+-- OUTER JOIN: compare two tables 
+SELECT
+	id,
+	name
+FROM
+	foo
+FULL OUTER JOIN bar USING (id, name)
+WHERE
+	foo.id IS NULL
+OR bar.id IS NULL;
+
+-- count the numbers of rows that are in the foo but not bar
+CREATE OR REPLACE FUNCTION random_between(low INT ,high INT) 
+   RETURNS INT AS
+$$
+BEGIN
+   RETURN floor(random()* (high-low + 1) + low);
+END;
+$$ language 'plpgsql' STRICT;
+
+SELECT random_between(1,100);
+
+-- multiple times
+SELECT random_between(1,100)
+FROM generate_series(1,5);
+```
+
+### Generate a Random Number in a Range
+
+```sql
+-- random() generate a number between 0~1
+SELECT random();
+
+-- generate 1~11
+SELECT random() * 10 + 1;
+
+-- generate 1~11 integer
+SELECT floor(random() * 10 + 1)::int;
+
+-- Generally generate a~b integer
+SELECT floor(random() * (b-a+1) + a)::int;
+
+-- pspgsql: User-defined function
+CREATE OR REPLACE FUNCTION random_between(low INT ,high INT) 
+   RETURNS INT AS
+$$
+BEGIN
+   RETURN floor(random()* (high-low + 1) + low);
+END;
+$$ language 'plpgsql' STRICT;
+
+
+```
+
+### Delete Duplicate Rows
+
+```sql
+DROP TABLE IF EXISTS basket;
+CREATE TABLE basket(
+    id SERIAL PRIMARY KEY,
+    fruit VARCHAR(50) NOT NULL
+);
+
+INSERT INTO basket(fruit) values('apple');
+INSERT INTO basket(fruit) values('apple');
+INSERT INTO basket(fruit) values('orange');
+INSERT INTO basket(fruit) values('orange');
+INSERT INTO basket(fruit) values('orange');
+INSERT INTO basket(fruit) values('banana');
+```
+
+```sql
+
+-- find duplicate
+SELECT fruit, COUNT(fruit)
+FROM basket
+GROUP BY fruit
+HAVING COUNT(fruit) > 1
+ORDER BY fruit;
+
+-- Deleting duplicate rows using DELETE USING
+DELETE FROM
+    basket a
+    USING basket b
+WHERE
+    a.id > b.id
+    AND a.fruit = b.fruit;
+    
+SELECT * from basket;
+
+-- Deleting duplicate rows using subquery
+-- keep the lowest id if want to keep highest change the order 
+DELETE FROM basket
+WHERE id IN
+	(SELECT id 
+     FROM
+		(SELECT id, fruit,
+		ROW_NUMBER() OVER( 
+            PARTITION BY fruit
+			ORDER BY id ASC 
+        ) AS row_num
+        FROM basket) t
+        WHERE t.row_num > 1);
+        
+SELECT * from basket;
+
+-- Deleting duplicate rows using immediate table
+-- step 1
+CREATE TABLE basket_temp (LIKE basket);
+
+-- step 2
+INSERT INTO basket_temp(fruit, id)
+SELECT 
+    DISTINCT ON (fruit) fruit,
+    id
+FROM basket; 
+
+-- step 3
+DROP TABLE basket;
+
+-- step 4
+ALTER TABLE basket_temp 
+RENAME TO basket;                 
+```
+
+### EXPLAIN
+
+EXPLAIN回傳SQL的執行計劃來看效能。
+
+- EXPLAIN 顯示使用索引掃描或順序掃描等方式，以及如果使用多個表將使用哪種連接算法。
+
+- EXPLAIN 回傳最重要和最有用的資訊是第一行之前的開始成本以及產生完整結果集的總成本。
+
+```sql
+EXPLAIN [ ( option [, ...] ) ] sql_statement;
+
+-- option
+ANALYZE [ boolean ] -- 會真正執行所以當作INSERT, UPDATE, DELETE時要用Begin->Rollback
+VERBOSE [ boolean ] -- 詳細
+COSTS [ boolean ] -- 預估
+BUFFERS [ boolean ] -- 需要 ANALYZ
+TIMING [ boolean ]  -- 需要 ANALYZ
+SUMMARY [ boolean ] -- 總結時間
+FORMAT { TEXT | XML | JSON | YAML }
+
+EXPLAIN 
+(ANALYZE 1,
+VERBOSE 1,
+COSTS 1,
+BUFFERS 1,
+TIMING 1,  
+SUMMARY 1,
+FORMAT TEXT)
+SELECT * FROM film;
+```
+
+```sql
+EXPLAIN SELECT * FROM film WHERE film_id = 100;
+
+EXPLAIN SELECT COUNT(*) FROM film;
+
+EXPLAIN
+SELECT
+    f.film_id,
+    title,
+    name category_name
+FROM
+    film f
+    INNER JOIN film_category fc 
+        ON fc.film_id = f.film_id
+    INNER JOIN category c 
+        ON c.category_id = fc.category_id
+ORDER BY
+    title;
+```
+
+PostgreSQL vs MySQL
+
+https://www.postgresqltutorial.com/postgresql-vs-mysql/
