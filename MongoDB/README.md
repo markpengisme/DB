@@ -153,6 +153,260 @@ MongoDB 將資料紀錄為 BSON 文件.
 
 https://docs.mongodb.com/manual/reference/bson-types/
 
+## Mongo Shell
+
+```sh
+# Help
+mongo --help
+# Run
+mongo
+mongo --port 28015
+mongo "mongodb://mongodb0.example.com:28015"
+mongo --host mongodb0.example.com:28015
+mongo --host mongodb0.example.com --port 28015
+
+## auth
+mongo "mongodb://alice@mongodb0.examples.com:28015/?authSource=admin"
+mongo --username alice --password --authenticationDatabase admin --host mongodb0.examples.com --port 28015
+
+## replica set
+mongo "mongodb://mongodb0.example.com.local:27017,mongodb1.example.com.local:27017,mongodb2.example.com.local:27017/?replicaSet=replA"
+mongo "mongodb+srv://server.example.com/"
+mongo --host replA/mongodb0.example.com.local:27017,mongodb1.example.com.local:27017,mongodb2.example.com.local:27017
+
+## TLS/SSL
+mongo "mongodb://mongodb0.example.com.local:27017,mongodb1.example.com.local:27017,mongodb2.example.com.local:27017/?replicaSet=replA&ssl=true"
+mongo "mongodb+srv://server.example.com/"
+mongo --ssl --host replA/mongodb0.example.com.local:27017,mongodb1.example.com.local:27017,mongodb2.example.com.local:27017
+```
+
+```js
+// mongo shell 簡單介紹
+
+// db
+db
+use <database>
+db.getSiblingDB(<database>) 
+                
+// 建立 DB & Collection
+use myNewDatabase
+db.myCollection.insertOne( { x: 1 } );
+db.createCollection(<collection>) // 可以用來建立名字包含空格、底線、與內建函式衝突的集合
+
+// print
+db.myCollection.find().pretty()
+print()
+printjson()
+
+// tab completion
+db.myCollection.c<Tab>
+
+//.mongorc.js 預載的設定黨
+    
+// quit
+quit()
+<Ctrl-C>
+```
+
+mongosh 新的 mongo shell 
+
+- Improved syntax highlighting.
+- Improved command history.
+- Improved logging.
+
+### Configure the `mongo` Shell
+
+```js
+// Display Number of operations
+cmdCount = 1;
+prompt = function() {
+             return (cmdCount++) + "> ";
+         }
+
+// Display Database and Hostname
+host = db.serverStatus().host;
+
+prompt = function() {
+             return db+"@"+host+"$ ";
+         }
+
+// Display Up Time and Document Count
+prompt = function() {
+           return "Uptime:"+db.serverStatus().uptime+" Documents:"+db.stats().objects+" > ";
+         }
+
+// Set editor
+export EDITOR=vim
+mongo
+
+function myFunction () { }
+edit myFunction
+myFunction
+
+// Change the mongo Shell Batch Size(default = 20)
+DBQuery.shellBatchSize = 10;
+```
+
+### Shell Help
+
+```js
+// shell help
+help
+
+// db help
+show db
+db.help()
+db.<function> // show method code
+    
+// collection Help
+show collections
+db.collection.help()
+db.collection.<function> // show method code
+    
+// cursor help
+db.collection.find().help()
+db.collection.find().<function> // show method code
+// e.g.
+db.collection.find().forEach
+```
+
+### Write Scripts for the mongo Shell
+
+```js
+// Connections
+
+// (1)
+conn = new Mongo();
+db = conn.getDB("myDatabase");
+
+// (2)
+db = connect("localhost:27020/myDatabase");
+
+// show dbs
+db.adminCommand('listDatabases')
+// use<db>
+db = db.getSiblingDB('<db>')
+// show collections
+db.getCollectionNames()
+// show users
+db.getUsers()
+// show roles
+db.getRoles({showBuiltinRoles: true})
+// show logs
+db.adminCommand({ 'getLog' : '*' })
+// it 
+cursor = db.collection.find()
+if ( cursor.hasNext() ){
+   cursor.next();
+}
+// print
+cursor = db.collection.find();
+while ( cursor.hasNext() ) {
+   printjson( cursor.next() );
+}
+
+```
+
+```shell
+## Script with mongo command
+mongo test --eval "printjson(db.getCollectionNames())"
+mongo localhost:27017/test script/myjsfile.js
+```
+
+```js
+// Script in mongo shell
+load("script/myjsfile.js")
+```
+
+### Data Types in the mongo Shell
+
+- Date
+  - `Date()` -> current date as String
+  - `new Date()`->`Date` object
+  - `ISODate()`->`Date` object
+
+```js
+var myDateString = Date();
+myDateString
+typeof myDateString
+
+var myDate = new Date();
+myDate instanceof Date
+
+var myDateInitUsingISODateWrapper = ISODate();
+myDateInitUsingISODateWrapper instanceof Date
+```
+
+- ObjectID
+
+```js
+new ObjectId()
+```
+
+- Number
+  - mongo shell 默認將所有數字視為  double
+  - NumberLong(64 bits integer) 
+  - NumberInt(32 bits integer)
+  - NumberDecimal(128 bits, 10進制)
+
+```js
+db.collection.insertOne( { _id: 10, calc: NumberLong("2090845886852") } )
+
+// set
+db.collection.updateOne( { _id: 10 },
+                      { $set:  { calc: NumberLong("2555555000000") } } )
+
+// increase NumberInt
+db.collection.updateOne( { _id: 10 },
+                      { $inc: { calc: NumberInt("5") } } )
+// find -> NumberLong
+db.collection.findOne( { _id: 10 } )
+
+// increase number
+db.collection.updateOne( { _id: 10 },
+                      { $inc: { calc: 5 } } )
+// find -> number
+db.collection.findOne( { _id: 10 } )
+
+// decimal 建議用引號包好才不會失去精度
+NumberDecimal("1000.55")
+NumberDecimal("1000.55000000000")
+NumberDecimal(9999999.4999999999)
+```
+
+- Double & Decimal: 比較時記得用`NumberDecimal()`轉換double
+
+```js
+db.collection.drop()
+db.collection.insertMany([
+{ "_id" : 1, "val" : NumberDecimal( "9.99" ), "description" : "Decimal" },
+{ "_id" : 2, "val" : 9.99, "description" : "Double" },
+{ "_id" : 3, "val" : 10, "description" : "Double" },
+{ "_id" : 4, "val" : NumberLong("10"), "description" : "Long" },
+{ "_id" : 5, "val" : NumberDecimal( "10.0" ), "description" : "Decimal" }])
+
+// 2
+db.collection.find({"val": 9.99})
+// 1
+db.collection.find({"val": NumberDecimal("9.99")})
+// 345
+db.collection.find({"val": 10})
+// 345
+db.collection.find({"val": NumberDecimal("10")})
+// Checking for decimal Type
+db.collection.find({val: {$type: "decimal"}})
+```
+
+- instanceof & typeof
+
+```js
+a = new ObjectId()
+a instanceof ObjectId
+typeof a
+```
+
+
+
 
 
 
