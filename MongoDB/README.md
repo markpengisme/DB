@@ -405,9 +405,269 @@ a instanceof ObjectId
 typeof a
 ```
 
+## MongoDB CRUD Operations
 
+### CREARE
 
+- db.collection.insertOne()
+- db.collection.insertMany()
+- `_id`: 每個 doc 都需要一個 id 當 PK，如果在 insert 忽略時會自動產生 ObjectID 給他
+- 所有寫的操作都具有原子性
 
+```js
+/* Create */
 
+// data
+db.inventory.drop()
+// Insert a Single Document
+db.inventory.insertOne(
+   { item: "canvas", qty: 100, tags: ["cotton"], size: { h: 28, w: 35.5, uom: "cm" } }
+)
+// Insert Multiple Document
+db.inventory.insertMany([
+   { item: "journal", qty: 25, tags: ["blank", "red"], size: { h: 14, w: 21, uom: "cm" } },
+   { item: "mat", qty: 85, tags: ["gray"], size: { h: 27.9, w: 35.5, uom: "cm" } },
+   { item: "mousepad", qty: 25, tags: ["gel", "blue"], size: { h: 19, w: 22.85, uom: "cm" } }
+])
+```
 
+### READ
+
+- db.collection.find()
+- db.collection.findone()
+- find() return a cursor
+
+```js
+// data
+db.inventory.drop()
+db.inventory.insertMany([
+   { item: "journal", qty: 25, size: { h: 14, w: 21, uom: "cm" }, tags: ["blank", "red"],  dim_cm: [ 14, 21 ], status: "A" },
+   { item: "notebook", qty: 50, size: { h: 8.5, w: 11, uom: "in" }, tags: ["red", "blank"], dim_cm: [ 14, 21 ], status: "A" },
+   { item: "paper", qty: 100, size: { h: 8.5, w: 11, uom: "in" }, tags: ["red", "blank", "plain"], dim_cm: [ 14, 21 ], status: "D" },
+   { item: "planner", qty: 75, size: { h: 22.85, w: 30, uom: "cm" }, tags: ["blank", "red"], dim_cm: [ 22.85, 30 ], status: "D" },
+   { item: "postcard", qty: 45, size: { h: 10, w: 15.25, uom: "cm" }, tags: ["blue"], dim_cm: [ 10, 15.25 ], status: "A" }
+]);
+// Select All Documents in a Collection
+db.inventory.find( {} )
+
+// Specify Equality Condition
+db.inventory.find( { status: "D" } )
+
+// Specify Conditions Using Query Operators
+db.inventory.find( { status: { $in: [ "A", "D" ] } } )
+
+// Specify AND Conditions
+db.inventory.find( { status: "A", qty: { $lt: 30 } } )
+
+// Specify OR Conditions
+db.inventory.find( { $or: [ { status: "A" }, { qty: { $lt: 30 } } ] } )
+
+// Specify AND as well as OR Conditions
+db.inventory.find( {
+     status: "A",
+     $or: [ { qty: { $lt: 30 } }, { item: /^p/ } ]
+} )
+```
+
+```js
+// Match an Embedded/Nested Document
+db.inventory.find( { size: { h: 14, w: 21, uom: "cm" } } )
+db.inventory.find(  { size: { w: 21, h: 14, uom: "cm" } }  )
+
+// Query on Nested Field
+db.inventory.find( { "size.uom": "in" } )
+
+// Specify Match using Query Operator
+db.inventory.find( { "size.h": { $lt: 15 } } )
+
+// Specify AND Condition
+db.inventory.find( { "size.h": { $lt: 15 }, "size.uom": "in", status: "D" } )
+```
+
+```js
+// Match an array(exact)
+db.inventory.find( { tags: ["red", "blank"] } )
+
+// Match an array(contain
+db.inventory.find( { tags: { $all: ["red", "blank"] } } )
+
+// Query an Array for an Element
+db.inventory.find( { tags: "red" } )
+db.inventory.find( { dim_cm: { $gt: 25 } } )
+
+// Specify Multiple Conditions for Array Elements
+db.inventory.find( { dim_cm: { $gt: 15, $lt: 20 } } )
+
+// Query for an Array Element that Meets Multiple Criteria
+db.inventory.find( { dim_cm: { $elemMatch: { $gt: 22, $lt: 30 } } } )
+
+// Query for an Element by the Array Index Position
+db.inventory.find( { "dim_cm.1": { $gt: 25 } } )
+
+// Query an Array by Array Length
+db.inventory.find( { "tags": { $size: 3 } } )
+```
+
+```js
+// data
+db.inventory.drop()
+db.inventory.insertMany( [
+   { item: "journal", instock: [ { warehouse: "A", qty: 5 }, { warehouse: "C", qty: 15 } ] },
+   { item: "notebook", instock: [ { warehouse: "C", qty: 5 } ] },
+   { item: "paper", instock: [ { warehouse: "A", qty: 60 }, { warehouse: "B", qty: 15 } ] },
+   { item: "planner", instock: [ { warehouse: "A", qty: 40 }, { warehouse: "B", qty: 5 } ] },
+   { item: "postcard", instock: [ { warehouse: "B", qty: 15 }, { warehouse: "C", qty: 35 } ] }
+]);
+
+// Query for a Document Nested in an Array
+db.inventory.find( { "instock": { warehouse: "A", qty: 5 } } )
+
+// Specify a Query Condition on a Field Embedded in an Array of Documents
+db.inventory.find( { 'instock.qty': { $lte: 20 } } )
+db.inventory.find( { 'instock.0.qty': { $lte: 20 } } )
+
+// A Single Nested Document Meets Multiple Query Conditions on Nested Fields¶
+db.inventory.find( { "instock": { $elemMatch: { qty: 5, warehouse: "A" } } } )
+db.inventory.find( { "instock": { $elemMatch: { qty: { $gt: 10, $lte: 20 } } } } )
+
+// Combination of Elements Satisfies the Criteria
+db.inventory.find( { "instock.qty": { $gt: 10,  $lte: 20 } } )
+db.inventory.find( { "instock.qty": 5, "instock.warehouse": "A" } )
+```
+
+```js
+// data
+db.inventory.drop
+db.inventory.insertMany( [
+  { item: "journal", status: "A", size: { h: 14, w: 21, uom: "cm" }, instock: [ { warehouse: "A", qty: 5 } ] },
+  { item: "notebook", status: "A",  size: { h: 8.5, w: 11, uom: "in" }, instock: [ { warehouse: "C", qty: 5 } ] },
+  { item: "paper", status: "D", size: { h: 8.5, w: 11, uom: "in" }, instock: [ { warehouse: "A", qty: 60 } ] },
+  { item: "planner", status: "D", size: { h: 22.85, w: 30, uom: "cm" }, instock: [ { warehouse: "A", qty: 40 } ] },
+  { item: "postcard", status: "A", size: { h: 10, w: 15.25, uom: "cm" }, instock: [ { warehouse: "B", qty: 15 }, { warehouse: "C", qty: 35 } ] }
+]);
+
+// Return All Fields in Matching Documents
+db.inventory.find( { status: "A" } )
+
+// Return the Specified Fields and the _id Field Only
+db.inventory.find( { status: "A" }, { item: 1, status: 1 } )
+
+// Suppress _id Field
+db.inventory.find( { status: "A" }, { item: 1, status: 1, _id: 0 } )
+
+// Return All But the Excluded Fields
+db.inventory.find( { status: "A" }, { status: 0, instock: 0 } )
+
+// Return Specific Fields in Embedded Documents
+db.inventory.find(
+   { status: "A" },
+   { item: 1, status: 1, "size.uom": 1 }
+)
+
+// Suppress Specific Fields in Embedded Documents¶
+db.inventory.find(
+   { status: "A" },
+   { "size.uom": 0 }
+)
+
+// Projection on Embedded Documents in an Array
+db.inventory.find( { status: "A" }, { item: 1, status: 1, "instock.qty": 1 } )
+
+// Project Specific Array Elements in the Returned Array
+db.inventory.find( { status: "A" }, { item: 1, status: 1, instock: { $slice: -1 } } )
+```
+
+```js
+// data
+db.inventory.insertMany([
+   { _id: 1, item: null },
+   { _id: 2 }
+])
+
+// Query for Null or Missing Fields
+db.inventory.find( { item: null } )
+
+// Type Check
+db.inventory.find( { item : { $type: 10 } } )
+
+// Existence Check
+db.inventory.find( { item : { $exists: false } } )
+```
+
+```js
+// Iterate a Cursor in the mongo Shell
+
+```
+
+### UPDATE
+
+- db.collection.updateOne()
+- db.collection.updateMany()
+- db.collection.replaceOne()
+
+```js
+// data
+db.inventory.drop()
+db.inventory.insertMany( [
+   { item: "canvas", qty: 100, size: { h: 28, w: 35.5, uom: "cm" }, status: "A" },
+   { item: "journal", qty: 25, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+   { item: "mat", qty: 85, size: { h: 27.9, w: 35.5, uom: "cm" }, status: "A" },
+   { item: "mousepad", qty: 25, size: { h: 19, w: 22.85, uom: "cm" }, status: "P" },
+   { item: "notebook", qty: 50, size: { h: 8.5, w: 11, uom: "in" }, status: "P" },
+   { item: "paper", qty: 100, size: { h: 8.5, w: 11, uom: "in" }, status: "D" },
+   { item: "planner", qty: 75, size: { h: 22.85, w: 30, uom: "cm" }, status: "D" },
+   { item: "postcard", qty: 45, size: { h: 10, w: 15.25, uom: "cm" }, status: "A" },
+   { item: "sketchbook", qty: 80, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+   { item: "sketch pad", qty: 95, size: { h: 22.85, w: 30.5, uom: "cm" }, status: "A" }
+] );
+
+// Update a Single Document
+db.inventory.updateOne(
+   { item: "paper" },
+   { 
+     $set: { "size.uom": "cm", status: "P" },
+     $currentDate: { lastModified: true }
+   }
+)
+
+// Update Multiple Documents
+db.inventory.updateMany(
+   { "qty": { $lt: 50 } },
+   {
+     $set: { "size.uom": "in", status: "P" },
+     $currentDate: { lastModified: true }
+   }
+)
+
+// Replace a Document
+db.inventory.replaceOne(
+   { item: "paper" },
+   { item: "paper", instock: [ { warehouse: "A", qty: 60 }, { warehouse: "B", qty: 40 } ] }
+)
+```
+
+### DELETE
+
+- db.collection.deleteOne()
+- db.collection.deleteMany() 
+
+```js
+db.inventory.drop()
+db.inventory.insertMany( [
+   { item: "journal", qty: 25, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+   { item: "notebook", qty: 50, size: { h: 8.5, w: 11, uom: "in" }, status: "P" },
+   { item: "paper", qty: 100, size: { h: 8.5, w: 11, uom: "in" }, status: "D" },
+   { item: "planner", qty: 75, size: { h: 22.85, w: 30, uom: "cm" }, status: "D" },
+   { item: "postcard", qty: 45, size: { h: 10, w: 15.25, uom: "cm" }, status: "A" },
+] );
+
+// Delete All Documents
+db.inventory.deleteMany({})
+
+// Delete All Documents that Match a Condition
+db.inventory.deleteMany({ status : "A" })
+
+// Delete Only One Document that Matches a Condition
+db.inventory.deleteOne( { status: "D" } )
+```
 
