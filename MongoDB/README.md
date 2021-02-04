@@ -407,12 +407,14 @@ typeof a
 
 ## MongoDB CRUD Operations
 
+所有寫的操作(CUD)都具有原子性。
+
 ### CREARE
 
 - db.collection.insertOne()
 - db.collection.insertMany()
+- db.collection.insert()
 - `_id`: 每個 doc 都需要一個 id 當 PK，如果在 insert 忽略時會自動產生 ObjectID 給他
-- 所有寫的操作都具有原子性
 
 ```js
 /* Create */
@@ -460,7 +462,7 @@ db.inventory.find( { status: { $in: [ "A", "D" ] } } )
 db.inventory.find( { status: "A", qty: { $lt: 30 } } )
 
 // Specify OR Conditions
-db.inventory.find( { $or: [ { status: "A" }, { qty: { $lt: 30 } } ] } )
+db.inventory.find( { $or: [ { status: "A" }, { qty: { $gt: 30 } } ] } )
 
 // Specify AND as well as OR Conditions
 db.inventory.find( {
@@ -470,7 +472,7 @@ db.inventory.find( {
 ```
 
 ```js
-// Match an Embedded/Nested Document
+// Match an Embedded/Nested Document(exact match)
 db.inventory.find( { size: { h: 14, w: 21, uom: "cm" } } )
 db.inventory.find(  { size: { w: 21, h: 14, uom: "cm" } }  )
 
@@ -488,7 +490,7 @@ db.inventory.find( { "size.h": { $lt: 15 }, "size.uom": "in", status: "D" } )
 // Match an array(exact)
 db.inventory.find( { tags: ["red", "blank"] } )
 
-// Match an array(contain
+// Match an array(contain)
 db.inventory.find( { tags: { $all: ["red", "blank"] } } )
 
 // Query an Array for an Element
@@ -496,9 +498,13 @@ db.inventory.find( { tags: "red" } )
 db.inventory.find( { dim_cm: { $gt: 25 } } )
 
 // Specify Multiple Conditions for Array Elements
+
+// Query an Array with Compound Filter Conditions on the Array Elements
+// 單個元素滿足這些條件或任何元素的組合滿足這些條件
 db.inventory.find( { dim_cm: { $gt: 15, $lt: 20 } } )
 
 // Query for an Array Element that Meets Multiple Criteria
+// 至少一個元素滿足所有指定的標準
 db.inventory.find( { dim_cm: { $elemMatch: { $gt: 22, $lt: 30 } } } )
 
 // Query for an Element by the Array Index Position
@@ -519,25 +525,29 @@ db.inventory.insertMany( [
    { item: "postcard", instock: [ { warehouse: "B", qty: 15 }, { warehouse: "C", qty: 35 } ] }
 ]);
 
-// Query for a Document Nested in an Array
+// Query for a Document Nested in an Array(exact match including field order!!)
 db.inventory.find( { "instock": { warehouse: "A", qty: 5 } } )
 
 // Specify a Query Condition on a Field Embedded in an Array of Documents
 db.inventory.find( { 'instock.qty': { $lte: 20 } } )
 db.inventory.find( { 'instock.0.qty': { $lte: 20 } } )
 
+// Specify Multiple Conditions for Array of Documents
+
 // A Single Nested Document Meets Multiple Query Conditions on Nested Fields¶
+// 至少一個元素滿足所有指定的標準
 db.inventory.find( { "instock": { $elemMatch: { qty: 5, warehouse: "A" } } } )
 db.inventory.find( { "instock": { $elemMatch: { qty: { $gt: 10, $lte: 20 } } } } )
 
 // Combination of Elements Satisfies the Criteria
+// 單個元素滿足這些條件或任何元素的組合滿足這些條件
 db.inventory.find( { "instock.qty": { $gt: 10,  $lte: 20 } } )
 db.inventory.find( { "instock.qty": 5, "instock.warehouse": "A" } )
 ```
 
 ```js
 // data
-db.inventory.drop
+db.inventory.drop()
 db.inventory.insertMany( [
   { item: "journal", status: "A", size: { h: 14, w: 21, uom: "cm" }, instock: [ { warehouse: "A", qty: 5 } ] },
   { item: "notebook", status: "A",  size: { h: 8.5, w: 11, uom: "in" }, instock: [ { warehouse: "C", qty: 5 } ] },
@@ -564,7 +574,7 @@ db.inventory.find(
    { item: 1, status: 1, "size.uom": 1 }
 )
 
-// Suppress Specific Fields in Embedded Documents¶
+// Suppress Specific Fields in Embedded Documents
 db.inventory.find(
    { status: "A" },
    { "size.uom": 0 }
@@ -574,7 +584,24 @@ db.inventory.find(
 db.inventory.find( { status: "A" }, { item: 1, status: 1, "instock.qty": 1 } )
 
 // Project Specific Array Elements in the Returned Array
+// $elemMatch, $slice, and $ are the only way to project specific elements to include in the returned array.
 db.inventory.find( { status: "A" }, { item: 1, status: 1, instock: { $slice: -1 } } )
+```
+
+```js
+// Iterate a Cursor in the mongo Shell
+var myCursor = db.inventory.find({ }, {item: 1, status: 1});
+while (myCursor.hasNext()) {
+   print(tojson(myCursor.next()));
+}
+
+var myCursor = db.inventory.find({ }, {item: 1, status: 1});
+while (myCursor.hasNext()) {
+   printjson(myCursor.next());
+}
+
+var myCursor = db.inventory.find({ }, {item: 1, status: 1});
+myCursor.forEach(printjson);
 ```
 
 ```js
@@ -587,16 +614,11 @@ db.inventory.insertMany([
 // Query for Null or Missing Fields
 db.inventory.find( { item: null } )
 
-// Type Check
+// Type Check(BSON 10 = Number)
 db.inventory.find( { item : { $type: 10 } } )
 
 // Existence Check
 db.inventory.find( { item : { $exists: false } } )
-```
-
-```js
-// Iterate a Cursor in the mongo Shell
-
 ```
 
 ### UPDATE
@@ -604,6 +626,10 @@ db.inventory.find( { item : { $exists: false } } )
 - db.collection.updateOne()
 - db.collection.updateMany()
 - db.collection.replaceOne()
+- db.collection.update()
+- 不能update `_id`
+- 保留欄位順序
+- 可以使用 "upsert: true"，沒有match的話就insert
 
 ```js
 // data
@@ -621,7 +647,7 @@ db.inventory.insertMany( [
    { item: "sketch pad", qty: 95, size: { h: 22.85, w: 30.5, uom: "cm" }, status: "A" }
 ] );
 
-// Update a Single Document
+// Update a Single Document(If lastModified field does not exist, $currentDate will create the field. See $currentDate for details.)
 db.inventory.updateOne(
    { item: "paper" },
    { 
@@ -646,10 +672,110 @@ db.inventory.replaceOne(
 )
 ```
 
+- Updates with Aggregation Pipeline(4.2)
+  - stage: `$addFo`, `$addFields`, `$set`, `$project`, `$unset`, `$replaceRoot`,  `$replaceWith`
+- 可以讓Update語句更靈活，比如根據當前字段的值來表達有條件的更新，或者使用另一個欄位的值來更新一個欄位。
+
+```js
+// Example 1(add NOW)
+db.students.drop()
+db.students.insertMany([
+   { _id: 1, test1: 95, test2: 92, test3: 90, modified: new Date("01/05/2020") },
+   { _id: 2, test1: 98, test2: 100, test3: 102, modified: new Date("01/05/2020") },
+   { _id: 3, test1: 95, test2: 110, modified: new Date("01/04/2020") }
+])
+db.students.find()
+db.students.updateOne( { _id: 3 }, [ { $set: { "test3": 98, modified: "$$NOW"} } ] )
+db.students.find()
+
+// Example 2(set default values)
+db.students2.drop()
+db.students2.insertMany([
+   { "_id" : 1, quiz1: 8, test2: 100, quiz2: 9, modified: new Date("01/05/2020") },
+   { "_id" : 2, quiz2: 5, test1: 80, test2: 89, modified: new Date("01/05/2020") },
+])
+db.students2.find()
+db.students2.updateMany( {},
+  [
+    { $replaceRoot: { newRoot:
+       { $mergeObjects: [ { quiz1: 0, quiz2: 0, test1: 0, test2: 0 }, "$$ROOT" ] }
+    } },
+    { $set: { modified: "$$NOW"}  }
+  ]
+)
+db.students2.find()
+
+
+// Example 3(算平均和等級)
+db.students3.drop()
+db.students3.insert([
+   { "_id" : 1, "tests" : [ 95, 92, 90 ], "modified" : ISODate("2019-01-01T00:00:00Z") },
+   { "_id" : 2, "tests" : [ 94, 88, 90 ], "modified" : ISODate("2019-01-01T00:00:00Z") },
+   { "_id" : 3, "tests" : [ 70, 75, 82 ], "modified" : ISODate("2019-01-01T00:00:00Z") }
+]);
+
+db.students3.updateMany(
+   { },
+   [
+     { $set: { average : { $trunc: [ { $avg: "$tests" }, 0 ] }, modified: "$$NOW" } },
+     { $set: { grade: { $switch: {
+                           branches: [
+                               { case: { $gte: [ "$average", 90 ] }, then: "A" },
+                               { case: { $gte: [ "$average", 80 ] }, then: "B" },
+                               { case: { $gte: [ "$average", 70 ] }, then: "C" },
+                               { case: { $gte: [ "$average", 60 ] }, then: "D" }
+                           ],
+                           default: "F"
+     } } } }
+   ]
+)
+db.students3.find()
+
+// Example 4( 新增陣列元素)
+db.students4.drop()
+db.students4.insertMany([
+  { "_id" : 1, "quizzes" : [ 4, 6, 7 ] },
+  { "_id" : 2, "quizzes" : [ 5 ] },
+  { "_id" : 3, "quizzes" : [ 10, 10, 10 ] }
+])
+db.students4.find()
+db.students4.updateOne( { _id: 2 },
+  [ { $set: { quizzes: { $concatArrays: [ "$quizzes", [ 8, 6 ]  ] } } } ]
+)
+db.students4.find()
+
+// Example 5(攝氏轉華氏)
+db.temperatures.drop()
+db.temperatures.insertMany([
+  { "_id" : 1, "date" : ISODate("2019-06-23"), "tempsC" : [ 4, 12, 17 ] },
+  { "_id" : 2, "date" : ISODate("2019-07-07"), "tempsC" : [ 14, 24, 11 ] },
+  { "_id" : 3, "date" : ISODate("2019-10-30"), "tempsC" : [ 18, 6, 8 ] }
+])
+
+db.temperatures.find()
+db.temperatures.updateMany( { },
+  [
+    { $addFields: { "tempsF": {
+          $map: {
+             input: "$tempsC",
+             as: "celsius",
+             in: { $add: [ { $multiply: ["$$celsius", 9/5 ] }, 32 ] }
+          }
+    } } }
+  ]
+)
+db.temperatures.find()
+
+```
+
+
+
 ### DELETE
 
 - db.collection.deleteOne()
 - db.collection.deleteMany() 
+- delete 不會 drop index
+- Atomic
 
 ```js
 db.inventory.drop()
@@ -667,7 +793,89 @@ db.inventory.deleteMany({})
 // Delete All Documents that Match a Condition
 db.inventory.deleteMany({ status : "A" })
 
-// Delete Only One Document that Matches a Condition
+// Delete Only One Document(First) that Matches a Condition
 db.inventory.deleteOne( { status: "D" } )
 ```
+
+### Bulk Write Operations
+
+- 操做可以 Ordered(default), 也可以 Unordered(parallel)
+- 支援以下操作
+    - insertOne
+    - updateOne
+    - updateMany
+    - replaceOne
+    - deleteOne
+    - deleteMany
+- [Strategies for Bulk Inserts to a Sharded Collection](https://docs.mongodb.com/manual/core/bulk-write-operations/#strategies-for-bulk-inserts-to-a-sharded-collection)
+
+```js
+db.characters.drop()
+db.characters.insertMany([
+{ "_id" : 1, "char" : "Brisbane", "class" : "monk", "lvl" : 3 },
+{ "_id" : 2, "char" : "Eldon", "class" : "alchemist", "lvl" : 3 },
+{ "_id" : 3, "char" : "Meldane", "class" : "ranger", "lvl" : 3 }
+]);
+
+try {
+   db.characters.bulkWrite(
+      [
+         { insertOne :
+            {
+               "document" :
+               {
+                  "_id" : 4, "char" : "Dithras", "class" : "barbarian", "lvl" : 4
+               }
+            }
+         },
+         { insertOne :
+            {
+               "document" :
+               {
+                  "_id" : 5, "char" : "Taeln", "class" : "fighter", "lvl" : 3
+               }
+            }
+         },
+         { updateOne :
+            {
+               "filter" : { "char" : "Eldon" },
+               "update" : { $set : { "status" : "Critical Injury" } }
+            }
+         },
+         { deleteOne :
+            { "filter" : { "char" : "Brisbane" } }
+         },
+         { replaceOne :
+            {
+               "filter" : { "char" : "Meldane" },
+               "replacement" : { "char" : "Tanys", "class" : "oracle", "lvl" : 4 }
+            }
+         }
+      ]
+   );
+}
+catch (e) {
+   print(e);
+}
+```
+
+### [Retryable Writes](https://docs.mongodb.com/manual/core/retryable-writes/)
+
+允許MongoDB在遇到網路錯誤，或者在 Replica set 或 sharded cluster 中找不到健康的primary時，自動重試寫入操作一次。
+
+### [Retryable Reads](https://docs.mongodb.com/manual/core/retryable-reads/)
+
+允許MongoDB在遇到某些網路或賜福器錯誤時，自動重試讀取操作一次。
+
+### SQL to MongoDB Mapping Chart
+
+- table -> collection
+- row -> document
+- column -> field
+- join -> lookup
+- ...[Ref](https://docs.mongodb.com/manual/reference/sql-comparison/)
+
+| SQL  | MongoDB |
+| ---- | ------- |
+|      |         |
 
